@@ -260,7 +260,7 @@ class ChassisConnection:
             value["connected"]
             and value["enabled"] is True
             and not value["busy"]
-            and self.node.publisher.get_subscription_count() > 0
+            and self.node.command_subscribers() > 0
         )
 
     # ------------------------------------------------------------------ operations
