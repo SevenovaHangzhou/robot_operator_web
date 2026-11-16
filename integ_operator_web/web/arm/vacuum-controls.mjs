@@ -131,7 +131,7 @@ export class VacuumControls {
         ? '等待读回' : known ? (enabled ? '点击关闭' : '点击开启') : '等待有效状态';
     }
     this.chip.textContent = busy ? '通信中' : fresh ? '已连接' : configured ? '状态不可用' : '未配置';
-    this.chip.className = `chip ${fresh ? 'ok' : 'warn'}`;
+    this.chip.className = `tag ${fresh ? 'ok' : 'warn'}`;
     const accessMessage = !this.access ? '等待操作台连接' : this.access.lease !== 'you'
       ? '获取控制权后可操作' : !this.allowed() ? '等待当前运动、序列或使能操作结束' : '';
     this.message.textContent = this.pending ? '正在切换开关并读取确认…'

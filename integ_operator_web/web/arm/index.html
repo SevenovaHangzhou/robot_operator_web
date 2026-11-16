@@ -3,63 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ALFA 机械臂与头部操作台</title>
+  <title>机械臂与头部</title>
+  <link rel="stylesheet" href="/static/common/base.css">
   <link rel="stylesheet" href="/static/arm/style.css">
   <link rel="stylesheet" href="/static/head/style.css">
 </head>
-<body>
-  <section id="login" class="login">
-    <form id="login-form" class="card login-card">
-      <h1>ALFA 机械臂与头部操作台</h1>
-      <input id="token" type="password" autocomplete="current-password" placeholder="访问令牌" required>
-      <button type="submit" class="primary">登录</button>
-      <p id="login-error" class="error"></p>
-    </form>
-  </section>
-
-  <header class="topbar">
-    <div class="brand"><span class="brand-mark"></span><b>ALFA</b><span>机械臂与头部</span>
-      <span id="mock-chip" class="chip" hidden>Mock · 非实机</span><a class="chip" href="/">状态页</a><a class="chip" href="/chassis">底盘页</a>
-      <a id="jog-link" class="chip button" href="#" target="_blank" rel="noopener noreferrer" title="在新标签页打开末端控制（18131）">机械臂末端控制 ↗</a></div>
-    <div class="topbar-status">
-      <div class="chips">
-      <span id="conn-chip" class="chip bad">未连接</span>
-      <span id="enable-chip" class="chip">--</span>
-      <span id="ctrl-chip" class="chip">控制器 --</span>
-      </div>
+<body data-state="down">
+  <header class="glass bar">
+    <div class="brand"><span class="brand-name">机械臂与头部</span><span class="lbl warn-text" id="mock-chip" hidden>Mock · 非实机</span></div>
+    <div class="status-pill" role="status" aria-live="polite">
+      <span class="dot"></span><span class="status-word" id="enable-chip">未连接</span><span class="status-note" id="ctrl-chip"></span>
+    </div>
+    <div class="spacer"></div>
+    <div class="facts">
+      <span id="conn-chip" class="tag bad">未连接</span>
       <div id="vacuum-pressure" class="vacuum-pressure" role="group" aria-label="真空压力，表压">
-        <div class="pressure-reading" data-pressure="left" title="AI0 · 左侧真空表压">
-          <span class="pressure-label">左真空</span>
-          <span><strong class="pressure-value">—</strong> <span class="pressure-unit">kPa</span></span>
-          <small class="pressure-status">等待数据</small>
-        </div>
-        <div class="pressure-reading" data-pressure="right" title="AI1 · 右侧真空表压">
-          <span class="pressure-label">右真空</span>
-          <span><strong class="pressure-value">—</strong> <span class="pressure-unit">kPa</span></span>
-          <small class="pressure-status">等待数据</small>
-        </div>
+        <span class="pressure-reading" data-pressure="left" title="AI0 · 左侧真空表压">左真空 <strong class="pressure-value">—</strong><span class="pressure-unit"> kPa</span> <small class="pressure-status">等待数据</small></span>
+        <span class="pressure-reading" data-pressure="right" title="AI1 · 右侧真空表压">右真空 <strong class="pressure-value">—</strong><span class="pressure-unit"> kPa</span> <small class="pressure-status">等待数据</small></span>
       </div>
     </div>
+    <nav class="nav" aria-label="页面">
+      <a href="/">状态</a><a href="/chassis">底盘操作</a><a class="on" href="/arm" aria-current="page">机械臂与头部</a>
+      <a id="jog-link" href="#" target="_blank" rel="noopener noreferrer" title="在新标签页打开末端控制（18131）">末端控制 ↗</a>
+    </nav>
   </header>
 
-  <main class="layout">
-    <section class="panel viewer-panel">
+  <main class="arm-layout">
+    <section class="glass card viewer-card" aria-label="整机模型">
+      <div class="head viewer-head"><b>整机模型</b><span class="legend"><i class="sw measured"></i>实测<i class="sw ghost"></i>目标预览</span></div>
       <div id="viewer" class="viewer"></div>
-      <div class="legend"><span class="sw measured"></span>实测<span class="sw ghost"></span>目标预览</div>
       <p id="model-msg" class="overlay-msg">等待机器人模型</p>
     </section>
 
-    <section class="panel side">
-      <section id="head-controls" class="card head-controls" aria-labelledby="head-title">
-        <div class="card-head"><h2 id="head-title">头部控制</h2>
-          <span data-head="conn" class="chip bad">未连接</span>
-          <span data-head="lease" class="chip">无控制权</span></div>
+    <div class="side">
+      <section id="head-controls" class="glass card head-controls" aria-labelledby="head-title">
+        <div class="head"><b id="head-title">头部</b>
+          <span class="tags"><span data-head="lease" class="tag">无控制权</span><span data-head="conn" class="tag bad">未连接</span></span></div>
         <p data-head="state" class="hint">等待头部运行栈</p>
         <div class="row">
           <button data-head="lease-op" type="button" disabled>获取头部控制权</button>
-          <button data-head="enable-op" type="button" disabled>使能</button>
+          <button data-head="enable-op" type="button" class="go" disabled>使能</button>
           <button data-head="disable-op" type="button" disabled>失能</button>
-          <button data-head="reset-op" type="button" disabled>故障复位</button>
+          <button data-head="reset-op" type="button" class="warn" disabled>故障复位</button>
         </div>
         <div data-head="joints" class="joints"><p class="hint">等待头部控制器与机器人模型</p></div>
         <div class="row">
@@ -69,20 +54,19 @@
         <p data-head="result" class="hint" role="status"></p>
         <p class="hint">正方向与机械行程尚未确认，目标按机器人模型限位检查。请在已确认的行程内操作。</p>
       </section>
-      <div class="card controls">
-        <div class="card-head"><h2>机械臂控制</h2></div>
-        <div class="control-buttons">
-          <button id="lease-btn" type="button" class="lease">获取控制权</button>
-          <button id="enable-btn" type="button" class="primary">使能</button>
-          <button id="disable-btn" type="button">失能</button>
-          <button id="reset-btn" type="button" class="reset" title="清除驱动故障，回到禁止合闸；不会使能">故障复位</button>
-        </div>
-        <div id="gears" class="gears"></div>
-      </div>
 
-      <section id="vacuum-panel" class="card vacuum-panel" aria-labelledby="vacuum-title">
-        <div class="card-head"><h2 id="vacuum-title">真空控制</h2>
-          <span id="vacuum-chip" class="chip">等待读取</span></div>
+      <section class="glass card controls" aria-label="机械臂控制">
+        <div class="head"><b>机械臂</b><div id="gears" class="gears"></div></div>
+        <div class="row control-buttons">
+          <button id="lease-btn" type="button">获取控制权</button>
+          <button id="enable-btn" type="button" class="go">使能</button>
+          <button id="disable-btn" type="button">失能</button>
+          <button id="reset-btn" type="button" class="warn" title="清除驱动故障，回到禁止合闸；不会使能">故障复位</button>
+        </div>
+      </section>
+
+      <section id="vacuum-panel" class="glass card vacuum-panel" aria-labelledby="vacuum-title">
+        <div class="head"><b id="vacuum-title">真空</b><span id="vacuum-chip" class="tag">等待读取</span></div>
         <div class="vacuum-buttons">
           <button type="button" data-vacuum="pump" disabled><span>真空泵</span><strong>未知</strong><small>等待读取</small></button>
           <button type="button" data-vacuum="left" disabled><span>左臂阀</span><strong>未知</strong><small>等待读取</small></button>
@@ -92,9 +76,8 @@
         <p class="hint">三个开关独立控制；开启状态不代表已吸附。</p>
       </section>
 
-      <div class="card">
-        <div class="card-head"><h2>关节目标</h2>
-          <button id="sync-btn" type="button" class="small">目标 = 当前位置</button></div>
+      <section class="glass card" aria-label="关节目标">
+        <div class="head"><b>关节目标</b><button id="sync-btn" type="button" class="small">目标 = 当前位置</button></div>
         <div id="joints" class="joints"></div>
         <p id="ready-msg" class="hint"></p>
         <div class="row">
@@ -103,17 +86,17 @@
         </div>
         <div id="progress" class="progress" hidden><i></i><span></span></div>
         <p id="result-msg" class="hint"></p>
-      </div>
+      </section>
 
-      <div class="card">
-        <div class="card-head"><h2>位姿</h2></div>
+      <section class="glass card" aria-label="位姿">
+        <div class="head"><b>位姿</b></div>
         <form id="pose-form" class="row">
           <input id="pose-name" maxlength="32" placeholder="位姿名称" required>
           <button type="submit">保存当前位姿</button>
         </form>
         <ul id="poses" class="poses"></ul>
         <div class="sequence">
-          <div class="card-head"><h2>位姿序列</h2><small id="sequence-count" class="hint-inline"></small></div>
+          <div class="head"><b>位姿序列</b><small id="sequence-count"></small></div>
           <div class="row">
             <label for="sequence-dwell">新增段默认停留（秒）</label>
             <input id="sequence-dwell" type="number" min="0" step="0.1" value="0">
@@ -127,13 +110,21 @@
             <button id="sequence-clear" type="button" class="wide">清空</button>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   </main>
 
-  <dialog id="confirm">
-    <form method="dialog" class="card">
-      <h2 id="confirm-title">确认运动</h2>
+  <div id="login" class="login glass">
+    <form id="login-form">
+      <b>登录</b>
+      <label>令牌 <input class="field" id="token" type="password" autocomplete="current-password" required></label>
+      <div class="login-row"><span id="login-error"></span><button class="btn primary" type="submit">登录</button></div>
+    </form>
+  </div>
+
+  <dialog id="confirm" class="glass">
+    <form method="dialog">
+      <b id="confirm-title">确认运动</b>
       <p id="confirm-body"></p>
       <table id="confirm-table" class="confirm-table"></table>
       <div class="row">

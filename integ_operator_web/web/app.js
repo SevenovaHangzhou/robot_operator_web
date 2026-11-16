@@ -19,11 +19,12 @@ function locks() {
   document.querySelectorAll('.yaw-btn').forEach(b=>{b.disabled=blocked || state.pointer!==null;});
   $('enable-op').disabled=!state.authed || !state.connected || state.busy || state.lease==='other' || (!state.enabled && !state.canEnable);
   $('enable-op').textContent=state.busy?'操作中…':state.enabled?'失能底盘':'使能底盘';
-  $('enable-op').classList.toggle('enabled',state.enabled);
+  $('enable-op').classList.toggle('go',!state.enabled);
   $('reset-op').hidden=!state.canReset;
   $('reset-op').disabled=!state.authed || state.busy || state.lease==='other';
   $('lease-op').disabled=!state.authed || state.lease==='other';
   $('lease-op').textContent=state.lease==='you'?'释放控制权':state.lease==='other'?'其他终端控制中':'获取控制权';
+  $('lease-op').className='btn'+(state.lease==='you'?' held':state.lease==='other'?' other':'');
   $('soft-stop').disabled=!state.authed;
   document.querySelectorAll('.gear-btn').forEach(b=>{b.disabled=state.moving || state.busy || state.lease==='other';b.classList.toggle('active',b.dataset.gear===state.gear);b.setAttribute('aria-checked',String(b.dataset.gear===state.gear));});
 }
@@ -45,15 +46,24 @@ function status(message) {
   state.driveAvailable=message.robot?.drive_available===true;
   if(wasAllowed && !state.driveAvailable)resetInputs(false);
   $('backend-badge').textContent=backend.backend_kind==='mock'?'软件测试':backend.backend_kind==='real'?'真实底盘':'等待底盘';
-  $('ctrl-state').textContent=!state.connected?'底盘未连接':state.enabled?'底盘已使能':'底盘未使能';
-  $('ctrl-detail').textContent=backend.message||'等待底盘运行栈启动';
-  $('ctrl-dot').className='dot '+(!state.connected?'bad':state.enabled?'ok':'warn');
-  $('endpoint').textContent=`速度接口 ${backend.command_topic || '/rt/base/cmd_vel'}`;
+  const fault=backend.state==='FAILED';
+  $('ctrl-state').textContent=!state.connected?'未连接':fault?'故障':state.enabled?'已使能':'未使能';
+  const detail=backend.message||'等待底盘运行栈启动';
+  $('ctrl-detail').textContent=detail===$('ctrl-state').textContent?'':detail;
+  document.body.dataset.state=!state.connected?'down':fault?'fault':state.enabled?'ok':'idle';
+  $('endpoint').textContent=backend.command_topic || '/rt/base/cmd_vel';
   if(backend.last_error)$('last-result').textContent=backend.last_error;
-  $('lease-chip').querySelector('b').textContent=state.lease==='you'?'本机控制':state.lease==='other'?'其他终端控制':'无控制权';
+  $('lease-chip').textContent=state.lease==='you'?'本机控制':state.lease==='other'?'其他终端控制':'无控制权';
+  $('lease-chip').className='tag'+(state.lease==='you'?' ok':state.lease==='other'?' warn':'');
+  const target=message.target||{};
+  $('rd-target').textContent=`${fmt(target.vx)} · ${fmt(target.vy)} · ${fmt(target.wz)}`;
+  $('stop-reason').textContent=message.stop_reason||'—';
+  $('moving').textContent=message.stopping_fast?'快速停止中':message.moving?'运动中':'静止';
+  $('moving').classList.toggle('on',Boolean(message.moving));
   $('rd-vx').textContent=fmt(message.command.vx);$('rd-vy').textContent=fmt(message.command.vy);$('rd-wz').textContent=fmt(message.command.wz);
   const gear=state.gears[state.gear];
-  if(gear)$('gear-detail').textContent=`${labels[state.gear]}：平移 ${gear.linear} m/s · 旋转 ${gear.angular} rad/s`;
+  if(gear)$('gear-detail').textContent=`平移 ${gear.linear} m/s · 旋转 ${gear.angular} rad/s`;
+  $('gear-tag').textContent=labels[state.gear]||state.gear;
   document.body.classList.toggle('sport',state.gear==='sport');locks();
 }
 function connect() {
@@ -61,7 +71,7 @@ function connect() {
   socket.addEventListener('message',event=>{
     if(state.ws!==socket)return;
     const data=JSON.parse(event.data);
-    if(data.type==='auth_ok') {state.authed=true;state.reconnect=500;state.gears=data.gears;renderGears();$('login').classList.add('hidden');$('conn').className='sb-item sb-ok';$('conn').querySelector('b').textContent='网页已连接';}
+    if(data.type==='auth_ok') {state.authed=true;state.reconnect=500;state.gears=data.gears;renderGears();$('login').hidden=true;$('conn').className='tag ok';$('conn').textContent='网页已连接';}
     else if(data.type==='status')status(data);
     else if(data.type==='module_op_result') {resetInputs(false);$('last-result').textContent=data.op==='reset'?(data.stage||(data.ok?'故障已复位':'复位失败')):data.ok?(data.enabled?'底盘使能成功':'底盘已失能'):(data.stage||'操作失败');toast($('last-result').textContent);state.busy=false;locks();}
     else if(data.type==='error') {
@@ -71,9 +81,9 @@ function connect() {
   socket.addEventListener('close',event=>{
     if(state.ws!==socket)return;
     resetInputs(false);state.authed=state.enabled=state.connected=state.driveAvailable=false;state.lease='none';state.busy=false;
-    $('conn').className='sb-item sb-bad';$('conn').querySelector('b').textContent='网页未连接';$('ctrl-state').textContent='底盘状态待确认';$('ctrl-detail').textContent='网页连接已断开';locks();
+    $('conn').className='tag bad';$('conn').textContent='网页未连接';$('ctrl-state').textContent='待确认';$('ctrl-detail').textContent='网页连接已断开';document.body.dataset.state='down';locks();
     // 4401: no valid session cookie; the login form exchanges the token for one.
-    if(event.code===4401)$('login').classList.remove('hidden');
+    if(event.code===4401)$('login').hidden=false;
     else{setTimeout(connect,state.reconnect);state.reconnect=Math.min(state.reconnect*2,5000);}
   });
 }

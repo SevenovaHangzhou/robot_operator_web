@@ -6,8 +6,9 @@ import URDFLoader from "./vendor/URDFLoader.js";
 
 THREE.Cache.enabled = true; // both copies share one download per mesh
 
-const MEASURED = { color: 0xc9ccd6, metalness: 0.15, roughness: 0.55 };
-const GHOST = { color: 0x56dcff, transparent: true, opacity: 0.32, depthWrite: false };
+// Same body material and lighting as the status page's whole-robot view.
+const MEASURED = { color: 0x7a8696, metalness: 0.4, roughness: 0.45 };
+const GHOST = { color: 0xa99bff, transparent: true, opacity: 0.38, depthWrite: false };
 
 export class ArmViewer {
   constructor(container) {
@@ -21,13 +22,14 @@ export class ArmViewer {
     this.camera.position.set(1.4, -1.6, 1.1);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x30303a, 2.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(2, -3, 4);
-    this.scene.add(sun);
-    const grid = new THREE.GridHelper(4, 40, 0x45454c, 0x2a2a2e);
-    grid.rotation.x = Math.PI / 2;
-    this.scene.add(grid);
+    this.scene.add(new THREE.HemisphereLight(0xcfd8e3, 0x0b0d10, 1.6));
+    const key = new THREE.DirectionalLight(0xffffff, 1.8);
+    key.position.set(2.5, -2.5, 4);
+    this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0x7cc4ff, 1.4);
+    rim.position.set(-3, 3, 1.5);
+    this.scene.add(rim);
+    this.scene.add(floorRings());
     this.scene.add(new THREE.AxesHelper(0.15));
     this.measured = null;
     this.ghost = null;
@@ -146,4 +148,24 @@ function parse(urdf, style, onlyMeshes, onAllLoaded = null) {
     // A model without mesh files never triggers onLoad.
     setTimeout(finish, 4000);
   });
+}
+
+// Floor rings and cross of the status page's view (same radii and colours).
+function floorRings() {
+  const group = new THREE.Group();
+  const ring = (radius, color, opacity) => {
+    const points = [];
+    for (let i = 0; i <= 160; i++) {
+      const angle = (i / 160) * Math.PI * 2;
+      points.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0.002));
+    }
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity })));
+  };
+  ring(0.55, 0x7cc4ff, 0.9);
+  for (const radius of [0.85, 1.3, 1.9]) ring(radius, 0x2b3340, 1);
+  const cross = [[-1.9, 0], [1.9, 0], [0, -1.9], [0, 1.9]].map(([x, y]) => new THREE.Vector3(x, y, 0.002));
+  group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(cross),
+    new THREE.LineBasicMaterial({ color: 0x2b3340 })));
+  return group;
 }

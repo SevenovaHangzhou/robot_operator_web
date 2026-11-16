@@ -78,7 +78,7 @@ export function headControls(root, loginRequired, onPositions) {
     status = data;
     const mine = data.lease === "you";
     $("lease").textContent = mine ? "持有头部控制权" : data.lease === "other" ? "其他终端控制中" : "无控制权";
-    $("lease").className = mine ? "chip ok" : "chip";
+    $("lease").className = mine ? "tag ok" : data.lease === "other" ? "tag warn" : "tag";
     $("lease-op").textContent = mine ? "释放头部控制权" : "获取头部控制权";
     $("lease-op").disabled = !data.capability || data.lease === "other";
     const enable = data.enable;
@@ -116,7 +116,7 @@ export function headControls(root, loginRequired, onPositions) {
       const data = JSON.parse(event.data);
       if (data.type === "status") {
         $("conn").textContent = "已连接";
-        $("conn").className = "chip ok";
+        $("conn").className = "tag ok";
         render(data);
       } else if (data.type === "result") {
         const waiting = pending.get(data.id);
@@ -131,7 +131,7 @@ export function headControls(root, loginRequired, onPositions) {
       pending.clear();
       status = null;
       $("conn").textContent = "未连接";
-      $("conn").className = "chip bad";
+      $("conn").className = "tag bad";
       $("state").textContent = "头部连接已断开，等待重新连接";
       $("lease").textContent = "控制权待确认";
       for (const button of root.querySelectorAll("button")) button.disabled = true;

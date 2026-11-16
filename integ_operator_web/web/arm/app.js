@@ -120,6 +120,8 @@ function openSocket() {
     vacuumControls.setAccess(null);
     vacuumPressure.disconnect();
     setChip("conn-chip", "连接中断", "bad");
+    $("enable-chip").textContent = "未连接";
+    document.body.dataset.state = "down";
     // 4401: no valid session cookie; the login form exchanges the token for one.
     if (event.code === 4401) $("login").hidden = false;
     else setTimeout(openSocket, 1000);
@@ -518,7 +520,7 @@ $("reset-btn").addEventListener("click", async () => {
 function setChip(id, text, kind = "") {
   const chip = $(id);
   chip.textContent = text;
-  chip.className = `chip ${kind}`.trim() + (chip.classList.contains("button") ? " button" : "");
+  chip.className = `tag ${kind}`.trim();
 }
 
 function onStatus(status) {
@@ -539,18 +541,19 @@ function onStatus(status) {
   const enable = status.enable;
   const enableText = { ENABLED: "已使能", IDLE: "未使能", DISCONNECTED: "使能管理未连接" }[enable.state]
     || (enable.state === "FAILED" ? `故障（${enable.stage}）` : `${enable.state} ${enable.stage}`);
-  setChip("enable-chip", enable.busy ? "使能切换中…" : enableText,
-    enable.state === "ENABLED" ? "ok" : enable.state === "IDLE" ? "" : "warn");
+  // The header pill carries the arm enable state; the note next to it the active controller.
+  $("enable-chip").textContent = enable.busy ? "使能切换中…" : enableText;
+  document.body.dataset.state = enable.busy ? "warn" : enable.state === "ENABLED" ? "ok"
+    : enable.state === "IDLE" ? "idle" : enable.state === "FAILED" ? "fault" : "warn";
   const mode = status.control_mode;
   const modeName = mode?.current === "rolling" ? "Rolling" : "JTC";
-  setChip("ctrl-chip", mode?.switching ? `切换至 ${mode.target === "rolling" ? "Rolling" : "JTC"}…`
+  $("ctrl-chip").textContent = (mode?.switching ? `切换至 ${mode.target === "rolling" ? "Rolling" : "JTC"}…`
     : mode && mode.current !== "unknown" ? `${modeName} 激活`
-    : `${status.controller.name || "控制器"} ${status.controller.active ? "激活" : "未激活"}`,
-    mode?.switching ? "warn" : (status.controller.active || mode?.current === "rolling") ? "ok" : "");
+    : `${status.controller.name || "控制器"} ${status.controller.active ? "激活" : "未激活"}`);
   $("mock-chip").hidden = status.mock !== true;
   const lease = { you: "释放控制权", other: "他人控制中", none: "获取控制权" }[status.lease];
   $("lease-btn").textContent = lease;
-  $("lease-btn").className = `lease ${status.lease === "you" ? "mine" : status.lease === "other" ? "other" : ""}`;
+  $("lease-btn").className = status.lease === "you" ? "held" : status.lease === "other" ? "other" : "";
   if (viewer) viewer.setMeasured(status.positions);
   renderTargets();
   renderProgress(status.moving);
