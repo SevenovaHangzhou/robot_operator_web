@@ -13,8 +13,11 @@ set -euo pipefail
 : "${RT_OPERATOR_WEB_TOKEN_FILE:?token file (mode 0600)}"
 
 set +u
+# shellcheck source=/dev/null
 source /opt/ros/humble/setup.bash
+# shellcheck source=/dev/null
 source "${ROBOT_DRIVER_SETUP}"
+# shellcheck source=/dev/null
 source "${OPERATOR_WEB_INSTALL}/setup.bash"
 set -u
 if [[ -n "${OPERATOR_WEB_PYTHONPATH:-}" ]]; then

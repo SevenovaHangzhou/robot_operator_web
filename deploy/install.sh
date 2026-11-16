@@ -20,7 +20,9 @@ if [[ ! -d "${release}/install" ]]; then
   (
     cd "${release}"
     set +u
+    # shellcheck source=/dev/null
     source /opt/ros/humble/setup.bash
+    # shellcheck source=/dev/null
     source "${driver_setup}"
     set -u
     colcon build --packages-select integ_operator_web --event-handlers console_cohesion+
