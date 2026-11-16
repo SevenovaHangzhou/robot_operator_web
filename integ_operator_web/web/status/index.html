@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>机器人状态</title>
+<link rel="stylesheet" href="/static/common/base.css">
 <link rel="stylesheet" href="/static/status/style.css">
 </head>
 <body data-state="fault">
@@ -102,8 +103,8 @@
   <form id="login-form">
     <b>登录</b>
     <p>状态页只读，但需要操作台令牌才能查看机器人数据。</p>
-    <label>令牌 <input type="password" id="login-token" autocomplete="current-password" required></label>
-    <div class="login-row"><span id="login-error"></span><button type="submit">登录</button></div>
+    <label>令牌 <input class="field" type="password" id="login-token" autocomplete="current-password" required></label>
+    <div class="login-row"><span id="login-error"></span><button class="btn primary" type="submit">登录</button></div>
   </form>
 </div>
 

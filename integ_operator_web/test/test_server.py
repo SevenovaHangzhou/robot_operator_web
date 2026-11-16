@@ -84,7 +84,7 @@ def test_index_served_with_security_headers() -> None:
         # "/" is the status page now; this console is the chassis page.
         response = await client.get("/chassis")
         assert response.status == 200
-        assert "ALFA 底盘操作台" in await response.text()
+        assert "<title>底盘操作</title>" in await response.text()
         assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
         assert response.headers["X-Frame-Options"] == "DENY"
         static = await client.get("/static/app.js")
