@@ -1,0 +1,6 @@
+# The robot_driver revision this web is built and tested against. It also fixes the
+# robot_description model (src/description/source-lock.yaml) the deployment installs and the
+# RT-Control internal endpoints listed in README.md. Bump with a PR; tools/check_compat.py checks it.
+robot_driver:
+  repository: https://github.com/SevenovaHangzhou/robot_driver.git
+  revision: "2129bc6496a32f21b69d37fa779cfe29e632d34e"

@@ -1,0 +1,6 @@
+repositories:
+  robot_interfaces:
+    type: git
+    url: https://github.com/SevenovaHangzhou/robot_interfaces.git
+    # Must equal the pin of the robot_driver revision in compat.yaml (tools/check_compat.py).
+    version: "78f02ffe5b8f40a9f57bf9405cd00e007914fc84"
