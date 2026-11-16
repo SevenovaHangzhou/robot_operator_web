@@ -1,0 +1,69 @@
+# robot_operator_web
+
+RT-Control 操作网页：一个进程、一个端口，页面有状态（首页）、底盘、机械臂与头部。只给台架与调试使用。
+2026-11-16 从 [robot_driver](https://github.com/SevenovaHangzhou/robot_driver) 拆出（ELECTRI-209），
+保留 `src/rt_control/integ_operator_web` 自 #159 起的提交历史。页面功能与边界见
+[integ_operator_web/README.md](integ_operator_web/README.md)。
+
+网页仍属 RT-Control 域：它和运行栈一起部署，可以使用下面列出的 RT-Control 内部接口。
+它不启动硬件、不写驱动控制字、不自动使能或复位。
+
+## 目录
+
+| 路径 | 内容 |
+| --- | --- |
+| `integ_operator_web/` | ROS 2 Humble 包（aiohttp 服务、网页静态资源、测试） |
+| `deps.repos` | 构建依赖：`robot_interfaces` 的固定提交 |
+| `compat.yaml` | 适配的 `robot_driver` 固定提交 |
+| `tools/check_compat.py` | 检查两边固定的 `robot_interfaces` 一致，并给出模型提交 |
+| `tools/pr_contract_gate.py` | PR 描述合同检查（与 robot_driver 相同） |
+
+## 版本
+
+- `compat.yaml` 固定一个 `robot_driver` 提交，它同时决定：
+  - `robot_interfaces`：本仓库 `deps.repos` 必须固定同一个提交（CI 检查）；
+  - 模型：`robot_driver` 的 `src/description/source-lock.yaml` 里的 `robot_description` 提交。
+    目标机上网页叠加在 `robot_driver` 的安装之上，用的就是那份已安装的 `robot_description`。
+  - 下面列出的内部接口的行为。
+- 升级 `robot_driver` 时：改 `compat.yaml`；若它的 `robot_interfaces` 变了，同步改 `deps.repos`；
+  跑 `python3 tools/check_compat.py` 与测试，开 PR。
+
+## 使用的接口
+
+公共接口（`robot_interfaces` 的 `contract/endpoints.yaml`）：
+`/rt/enable`、`/rt/disable`、`/rt/reset_fault`、`/rt/capabilities`、`/rt/readiness`、`/diagnostics`、
+`/joint_states`、`/rt/base/odom`、`/rt/battery/{left,right}/state`、`/rt/ultrasonic/channel1..8/range`、
+`/rt/arms/set_control_mode`、`/rt/arms/rolling/state`、`/rt/arms/follow_joint_trajectory`、
+`/rt/vacuum/{left,right}/pressure`、`/rt/head/move`。
+
+台架替代发送方（N-04、M-09 的约束里登记，与 Motion 互斥）：`/rt/base/cmd_vel`、
+`/rt/arms/rolling/target_batch`（经 `robot_interfaces_rolling_client`）。
+
+RT-Control 内部接口（不进公共仓库；行为以 `compat.yaml` 固定的 `robot_driver` 为准）：
+
+| 接口 | 用途 |
+| --- | --- |
+| `/controller_manager/list_controllers`、`/controller_manager/list_hardware_components` | 控制器与硬件组件状态 |
+| `/controller_manager/get_parameters`、各控制器 `get_parameters` | 运行中的模型（`robot_description`）、关节列表、限位 |
+| `/enable_manager/get_parameters`、`/<enable_manager>/confirm_standstill` | 受管关节、停稳确认 |
+| `/<controller>/controller_state`、`/<controller>/query_state`、FJT `/_action/status` | 手臂轨迹执行状态 |
+| 诊断条目 `/robot/rt_control/enable_manager` | 使能状态与阶段 |
+
+## 构建与测试
+
+```bash
+mkdir -p ~/ws/src && cd ~/ws/src
+git clone https://github.com/SevenovaHangzhou/robot_operator_web.git
+vcs import < robot_operator_web/deps.repos
+cd ~/ws && source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --packages-up-to integ_operator_web
+colcon test --packages-select integ_operator_web && colcon test-result --verbose
+```
+
+仓库工具：`python3 -m unittest discover -s tools/tests -t .`、`python3 tools/check_compat.py`、`ruff check .`。
+
+## 运行
+
+在目标机上叠加到 `robot_driver` 的安装之上，按 [integ_operator_web/README.md](integ_operator_web/README.md)
+的“启动”一节运行；`--view-model` 填该机型的模型文件（与 `robot_driver` 机型 manifest 的 `xacro_file` 一致）。

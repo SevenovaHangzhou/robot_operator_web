@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install tools
+        run: python3 -m pip install --no-cache-dir ruff==0.11.13 pyyaml
+      - name: Ruff
+        run: ruff check .
+      - name: Repository tool tests
+        run: python3 -m unittest discover -s tools/tests -t .
+      - name: robot_driver compatibility
+        run: python3 tools/check_compat.py
+      - name: Enforce pull request contract
+        if: github.event_name == 'pull_request'
+        run: python3 tools/pr_contract_gate.py --event-path "${GITHUB_EVENT_PATH}"
+
+  build:
+    needs: governance
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          path: src/robot_operator_web
+      - name: Import pinned dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3-vcstool
+          vcs import src < src/robot_operator_web/deps.repos
+      - name: Install dependencies
+        run: |
+          rosdep update --rosdistro humble
+          rosdep install --from-paths src --ignore-src -r -y --rosdistro humble
+      - name: Build
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --packages-up-to integ_operator_web --event-handlers console_cohesion+
+      - name: Test
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon test --packages-select integ_operator_web --event-handlers console_cohesion+
+          colcon test-result --verbose
