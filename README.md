@@ -65,7 +65,9 @@ colcon test --packages-select integ_operator_web && colcon test-result --verbose
 
 ## 部署（systemd 用户服务）
 
-网页叠加在目标机正在运行的 `robot_driver` 安装之上构建，使用同一套接口包，和运行栈的消息定义一致。
+网页在叠加于目标机 `robot_driver` 安装之上的工作区里构建，带上 `deps.repos` 固定的 `robot_interfaces`；
+`robot_driver` 提供模型与其余依赖。部署前确认运行栈的接口定义与固定提交一致（`compat.yaml` 的版本自动满足；
+更旧的运行栈要逐文件比对它安装的 `.msg/.srv/.action`）。
 
 ```bash
 # 1. 构建指定提交并切为 current（~/.local/share/robot-operator-web/releases/<commit>）
