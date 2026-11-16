@@ -62,30 +62,52 @@ class OperatorWebNode(Node):
             self.declare_parameter(role, "")
         self.config = build_config(**{k: self.get_parameter(k).value for k in defaults})
         self.arbiter = DriveArbiter(self.config.gears, self.config.limits, time.monotonic)
-        self.publisher = self.create_publisher(
-            Twist, self.config.command_topic, robot_interfaces_qos.control()
-        )
+        # The velocity publisher exists only while this web is commanding the chassis: navigation
+        # allows no other publisher on that topic while the web is not in control (N-04).
+        self.publisher = None
+        self._publisher_lock = threading.Lock()
         self.backend = ChassisConnection(self, software_test_only)
         self.create_timer(1 / PUBLISH_RATE_HZ, self.publish_command)
 
+    def command_subscribers(self):
+        return self.count_subscribers(self.config.command_topic)
+
     def publish_zero(self):
-        self.publisher.publish(Twist())
+        # Only a web that is commanding has a publisher, and only then is there motion to stop.
+        with self._publisher_lock:
+            if self.publisher is not None:
+                self.publisher.publish(Twist())
 
     def publish_command(self):
         if not self.backend.allowed():
             self.arbiter.reset_motion("chassis_not_enabled")
+            self._drop_publisher()
             return
         command = self.arbiter.tick()
-        if command is not None:
-            msg = Twist()
-            msg.linear.x, msg.linear.y, msg.angular.z = command
+        if command is None:
+            # No lease and the trailing zeros are out: stop being a publisher.
+            self._drop_publisher()
+            return
+        msg = Twist()
+        msg.linear.x, msg.linear.y, msg.angular.z = command
+        with self._publisher_lock:
+            if self.publisher is None:
+                self.publisher = self.create_publisher(
+                    Twist, self.config.command_topic, robot_interfaces_qos.control()
+                )
             self.publisher.publish(msg)
+
+    def _drop_publisher(self):
+        with self._publisher_lock:
+            if self.publisher is not None:
+                self.destroy_publisher(self.publisher)
+                self.publisher = None
 
     def robot_status(self):
         return {
             "chassis": self.backend.status(),
             "drive_available": self.backend.allowed(),
-            "command_subscribers": self.publisher.get_subscription_count(),
+            "command_subscribers": self.command_subscribers(),
         }
 
 
