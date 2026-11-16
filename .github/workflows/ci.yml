@@ -1,8 +1,10 @@
 name: ci
 
+# Description edits run only the PR contract (pr-metadata-governance.yml): an edit sharing this
+# concurrency group would cancel a running build and then skip its own.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
   workflow_dispatch:
@@ -39,7 +41,6 @@ jobs:
 
   build:
     needs: governance
-    if: github.event.action != 'edited'
     runs-on: ubuntu-22.04
     container: ros:humble-ros-base
     timeout-minutes: 30
