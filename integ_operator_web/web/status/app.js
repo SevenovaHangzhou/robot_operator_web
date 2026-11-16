@@ -168,7 +168,7 @@ function renderChassis(c, geo) {
     const lv = level(d), st = ST[lv];
     const L = (d == null ? 1 : Math.min(d, MAXM)) * PX, hx = (L * 0.3746).toFixed(1), hy = (L * 0.9272).toFixed(1);
     s += `<g transform="translate(${q.x.toFixed(1)} ${q.y.toFixed(1)}) rotate(${q.rot.toFixed(1)})"><path d="M0 0L-${hx} -${hy}A${L} ${L} 0 0 1 ${hx} -${hy}Z" fill="${st.f}"${lv === "none" ? ' stroke="rgba(255,255,255,.3)" stroke-dasharray="3 4"' : ""}/>`;
-    if (lv !== "none") s += `<path d="M-${hx} -${hy}A${L} ${L} 0 0 1 ${hx} -${hy}" fill="none" stroke="${st.a}" stroke-width="${st.w}" stroke-linecap="round"${lv === "danger" ? ' style="filter:drop-shadow(0 0 5px #ff5a79)"' : ""}/>`;
+    if (lv !== "none") s += `<path d="M-${hx} -${hy}A${L} ${L} 0 0 1 ${hx} -${hy}" fill="none" stroke="${st.a}" stroke-width="${st.w}" stroke-linecap="round"${lv === "danger" ? ' class="beam-danger"' : ""}/>`;
     s += '<circle r="2" fill="rgba(255,255,255,.45)"/></g>';
     // The fan points along the beam: after rotate(rot) the up vector maps to (sin, -cos).
     const radians = (q.rot * Math.PI) / 180;
@@ -215,9 +215,12 @@ function renderCpu(c, log) {
     .map((id) => {
       const core = c.cores.find((row) => row.id === id);
       const pct = core && core.total ? (100 * core.busy) / core.total : null;
-      return `<div class="rt"><span>${id}</span><div class="track"><i style="width:${pct == null ? 0 : Math.min(pct, 100).toFixed(0)}%"></i><u style="left:${RT_TICK}%"></u></div><span>${fix(pct, 0)}%</span></div>`;
+      return `<div class="rt"><span>${id}</span><div class="track"><i data-pct="${pct == null ? 0 : Math.min(pct, 100).toFixed(0)}"></i><u></u></div><span>${fix(pct, 0)}%</span></div>`;
     })
     .join("");
+  // CSP (style-src 'self') blocks style attributes in markup; CSSOM assignments are allowed.
+  for (const bar of $("rt").querySelectorAll(".track i")) bar.style.width = `${bar.dataset.pct}%`;
+  for (const tick of $("rt").querySelectorAll(".track u")) tick.style.left = `${RT_TICK}%`;
   const general = c.cores.filter((row) => !isolated.has(row.id));
   const pcts = general.map((row) => (row.total ? (100 * row.busy) / row.total : 0));
   $("gp-note").textContent = general.length
@@ -246,7 +249,6 @@ function renderCpu(c, log) {
 
 // ------------------------------------------------------------------ alerts
 const ORDER = { fault: 0, warn: 1, stale: 2 };
-const COLOR = { fault: "#ff5a79", warn: "#ffa63d", stale: "rgba(255,255,255,.5)" };
 let alertKey = "";
 function renderAlerts(s) {
   const recovered = s.alerts.filter((a) => a.level === "recovered").slice(0, RECOVERED_MAX);
@@ -263,10 +265,10 @@ function renderAlerts(s) {
     html = shown
       .slice(0, 5)
       .map((a) => {
-        const c = COLOR[a.level];
-        return `<article class="glass al ${a.level}"><div class="code"><span>${esc(a.code)}</span><span class="dot" style="${a.level === "stale" ? "" : `background:${c}`}"></span></div>`
+        // Level colours are classes: CSP (style-src 'self') blocks style attributes in markup.
+        return `<article class="glass al ${a.level}"><div class="code"><span>${esc(a.code)}</span><span class="dot${a.level === "stale" ? "" : ` lv-${a.level}`}"></span></div>`
           + `<div class="ttl">${esc(a.title)}</div>`
-          + `<div class="pills"><span class="pill"><span class="dot" style="background:${c}"></span>${LEVEL[a.level]}</span>${a.part ? `<span class="pill">${esc(a.part)}</span>` : ""}</div>`
+          + `<div class="pills"><span class="pill"><span class="dot lv-${a.level}"></span>${LEVEL[a.level]}</span>${a.part ? `<span class="pill">${esc(a.part)}</span>` : ""}</div>`
           + `<div class="foot"><span>${a.evidence && a.evidence.at ? new Date(a.evidence.at * 1000).toLocaleTimeString("zh-CN", { hour12: false }) : esc(a.code)}</span>`
           + (a.evidence && a.evidence.url
             ? `<a href="${esc(a.evidence.url)}" target="_blank" rel="noopener">${a.evidence.kind === "waveform" ? "波形" : "运行记录"}</a>`
