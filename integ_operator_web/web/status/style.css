@@ -172,6 +172,11 @@ main { flex: 1; min-height: 0; padding: 16px 18px 18px; display: flex; flex-dire
 .al.recovered .ttl { color: var(--t2); }
 .al.fault .code .dot { box-shadow: 0 0 10px var(--coral); }
 .al.stale .code .dot { border: 1.5px dashed var(--t3); }
+/* level colours (classes, not style attributes: the page CSP is style-src 'self') */
+.dot.lv-fault { background: var(--coral); }
+.dot.lv-warn { background: var(--orange); }
+.dot.lv-stale { background: var(--t3); }
+.beam-danger { filter: drop-shadow(0 0 5px #ff5a79); }
 /* one-line summary keeps the height of a card row */
 .al-summary { grid-column: 1 / -1; height: 151px; display: flex; align-items: center; gap: 12px; padding: 0 22px; border-radius: 18px; font-size: 15px; font-weight: 500; }
 .al-summary .dot { width: 10px; height: 10px; background: var(--lime); }
