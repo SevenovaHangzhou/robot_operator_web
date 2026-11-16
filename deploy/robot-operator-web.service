@@ -1,0 +1,17 @@
+[Unit]
+Description=RT-Control operator web (robot_operator_web)
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Machine-specific values; see deploy/robot-operator-web.env.example.
+EnvironmentFile=%h/.config/robot-operator-web/env
+ExecStart=%h/.local/share/robot-operator-web/current/src/robot_operator_web/deploy/start.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+Nice=10
+
+[Install]
+WantedBy=default.target
