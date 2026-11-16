@@ -63,7 +63,21 @@ colcon test --packages-select integ_operator_web && colcon test-result --verbose
 
 仓库工具：`python3 -m unittest discover -s tools/tests -t .`、`python3 tools/check_compat.py`、`ruff check .`。
 
-## 运行
+## 部署（systemd 用户服务）
 
-在目标机上叠加到 `robot_driver` 的安装之上，按 [integ_operator_web/README.md](integ_operator_web/README.md)
-的“启动”一节运行；`--view-model` 填该机型的模型文件（与 `robot_driver` 机型 manifest 的 `xacro_file` 一致）。
+网页叠加在目标机正在运行的 `robot_driver` 安装之上构建，使用同一套接口包，和运行栈的消息定义一致。
+
+```bash
+# 1. 构建指定提交并切为 current（~/.local/share/robot-operator-web/releases/<commit>）
+deploy/install.sh <commit> <robot_driver 安装的 setup.bash>
+# 2. 本机配置：复制模板后逐项填写，没有默认值
+mkdir -p ~/.config/robot-operator-web
+cp deploy/robot-operator-web.env.example ~/.config/robot-operator-web/env
+# 3. 安装并启动服务
+cp deploy/robot-operator-web.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now robot-operator-web
+```
+
+升级：对新提交运行 `deploy/install.sh`，再 `systemctl --user restart robot-operator-web`；回滚同理指向旧提交。
+`deploy/start.sh` 只读取环境文件中的值；`OPERATOR_WEB_VIEW_MODEL` 填该机型的模型文件（与 `robot_driver`
+机型 manifest 的 `xacro_file` 一致）。页面功能与启动参数见 [integ_operator_web/README.md](integ_operator_web/README.md)。
