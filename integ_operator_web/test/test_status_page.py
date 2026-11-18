@@ -353,6 +353,36 @@ def test_model_without_sonar_frames_leaves_the_page_on_placeholders():
     assert geometry["body"] == {"half_length_m": 0.305, "half_width_m": 0.305}
 
 
+def test_footprint_follows_steer_modules_mounted_below_the_suspension():
+    """robot_description ELECTRI-228: the rear modules hang below `suspension` at (-0.305, 0, 0)."""
+    front = [
+        (f"steer{i}_joint", f"0.305 {y} 0.01", "3.1415927 0 -1.5707963")
+        for i, y in ((1, 0.305), (2, -0.305))
+    ]
+    model = urdf_with(front).replace(
+        "</robot>",
+        '<link name="suspension_link"/><joint name="suspension" type="prismatic">'
+        '<origin xyz="-0.305 0 0" rpy="0 0 0"/><parent link="base_link"/><child link="suspension_link"/>'
+        '<axis xyz="0 0 1"/><limit lower="0" upper="0.18" effort="10" velocity="0.03"/></joint>'
+        + "".join(
+            f'<link name="steer{i}_link"/><joint name="steer{i}_joint" type="revolute">'
+            f'<origin xyz="0 {y} 0.01" rpy="3.1415927 0 -1.5707963"/><parent link="suspension_link"/>'
+            f'<child link="steer{i}_link"/></joint>'
+            for i, y in ((3, 0.305), (4, -0.305))
+        )
+        + "</robot>",
+    )
+    geometry = model_geometry.frames(model)
+    wheels = {item["joint"]: (item["x_m"], item["y_m"]) for item in geometry["wheels"]}
+    assert wheels == {
+        "steer1_joint": (0.305, 0.305),
+        "steer2_joint": (0.305, -0.305),
+        "steer3_joint": (-0.305, 0.305),
+        "steer4_joint": (-0.305, -0.305),
+    }
+    assert geometry["body"] == {"half_length_m": 0.305, "half_width_m": 0.305}
+
+
 def test_unreadable_model_is_not_an_error():
     assert model_geometry.frames("not xml") == {"sonar": [], "wheels": [], "body": None}
     assert model_geometry.parse(None) == {"sonar": [], "wheels": [], "body": None}
