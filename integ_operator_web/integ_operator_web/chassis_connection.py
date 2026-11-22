@@ -211,7 +211,8 @@ class ChassisConnection:
             and now - self.parameters_at < STALE_S
             and len(self.steering) == len(self.drive) == 4
             and len(set(axes)) == 8
-            and set(self.managed) == set(axes)
+            # A whole-machine manager also manages lift/arms; every chassis axis must be managed.
+            and set(axes) <= set(self.managed)
             and self.topic == self.node.config.command_topic
         )
 
