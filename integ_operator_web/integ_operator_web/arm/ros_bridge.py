@@ -59,6 +59,11 @@ class RosBridge(Node):
         self._action_topic = ""
         self._controller = ""
         self._pending = {}
+        # enable_manager motion groups (<group>.motion_joints); the arm page uses the group
+        # whose joints are its trajectory controller's joints.
+        self._manager = ""
+        self._motion_groups: tuple[str, ...] = ()
+        self._standstill_group = ""
         latched = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -173,8 +178,11 @@ class RosBridge(Node):
             "controllers", self._controllers, ListControllers.Request(), self._received_controllers
         )
         if self._standstill_parameters is not None:
+            groups = self._motion_groups
+            names = ["motion_groups", *(f"{group}.motion_joints" for group in groups)]
             self._request("standstill_joints", self._standstill_parameters,
-                GetParameters.Request(names=["motion_joints"]), self._received_standstill_joints)
+                GetParameters.Request(names=names),
+                lambda response: self._received_standstill_joints(groups, response))
         if self._rolling_parameters is not None:
             self._request("rolling_parameters", self._rolling_parameters,
                           GetParameters.Request(names=ROLLING_PARAMETERS), self._received_rolling_parameters)
@@ -192,12 +200,12 @@ class RosBridge(Node):
             self._readback.evidence.confirm_standstill(False, time.monotonic())
             self._readback.standstill_client = self._readback.pending = None
             self._standstill_parameters = None
+            self._manager, self._motion_groups, self._standstill_group = "", (), ""
             self._pending.pop("standstill_joints", None)
-        elif self._readback.standstill_client is None:
-            self._readback.standstill_client = self.create_client(
-                Trigger, f"/{managers[0].name}/confirm_standstill", callback_group=self._group)
+        elif self._standstill_parameters is None:
+            self._manager = managers[0].name
             self._standstill_parameters = self.create_client(
-                GetParameters, f"/{managers[0].name}/get_parameters", callback_group=self._group)
+                GetParameters, f"/{self._manager}/get_parameters", callback_group=self._group)
         for item in response.controller:
             if item.type.endswith("/RollingTrajectoryController") and self._rolling_parameters is None:
                 self._rolling_parameters = self.create_client(
@@ -210,9 +218,21 @@ class RosBridge(Node):
         )
         self.console.update(controller_active=active, controller_at=time.monotonic())
 
-    def _received_standstill_joints(self, response):
+    def _received_standstill_joints(self, groups, response):
         values = response.values
-        self._readback.motion_joints = tuple(values[0].string_array_value) if len(values) == 1 and values[0].type == 9 else ()
+        if len(values) != 1 + len(groups) or any(value.type != 9 for value in values):
+            self._readback.motion_joints = ()
+            return
+        self._motion_groups = tuple(values[0].string_array_value)
+        joints = {group: tuple(value.string_array_value) for group, value in zip(groups, values[1:])}
+        group = next((g for g, names in joints.items() if names == tuple(self.console.joint_names)), "")
+        if group != self._standstill_group:
+            self._readback.evidence.confirm_standstill(False, time.monotonic())
+            self._readback.pending = None
+            self._readback.standstill_client = None if not group else self.create_client(
+                Trigger, f"/{self._manager}/{group}/confirm_standstill", callback_group=self._group)
+            self._standstill_group = group
+        self._readback.motion_joints = joints.get(group, ())
         self._readback.motion_joints_at = time.monotonic()
 
     def _received_rolling_parameters(self, response):
