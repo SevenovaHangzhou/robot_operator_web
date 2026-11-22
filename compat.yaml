@@ -3,4 +3,4 @@
 # RT-Control internal endpoints listed in README.md. Bump with a PR; tools/check_compat.py checks it.
 robot_driver:
   repository: https://github.com/SevenovaHangzhou/robot_driver.git
-  revision: "2129bc6496a32f21b69d37fa779cfe29e632d34e"
+  revision: "84a986abdf1857db9a8713e1ee221fd68015e91f"

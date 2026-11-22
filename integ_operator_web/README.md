@@ -240,7 +240,7 @@ RT-Control 操作网页：一个进程、一个端口、多个页面（设计稿
 
 `/ws/jog` 复用登录、来源检查、审计和注销，协议为 `shared_arm_authority_v1`。状态提供 Domain、原始 URDF SHA-256、受控关节、实测反馈和发布端状态。默认只有 `acquire/release/stop`，运动命令返回 `jog_motion_disabled`；显式 `--jog-motion-enabled` 才建立官方 `robot_interfaces_rolling_client::RollingSender` 的 Python 绑定，接受 `begin_motion/window`。硬件使能仍由操作员显式发起。
 
-启动状态为 `unverified`。JTC active 时要求无活动 Action、目标速度为零；Rolling active 时要求新鲜 HOLDING 状态且 JTC 不活动。两者都 inactive 时也不能直接交接。所有路径都必须取得 EnableManager 域内只读 `~/confirm_standstill`（类型 `std_srvs/srv/Trigger`）的成功确认；查询必须晚于本次终态/停车屏障，且响应仍新鲜。该服务复用模式切换已有的内部实时采样、连续窗口、反馈时效和 `stableActualInterval()` 判据，不切换模式、不使能、不写驱动命令。结果不明、超时或没有新的实时样本时不能返回空闲。网页不计算位置/速度停稳窗口。
+启动状态为 `unverified`。JTC active 时要求无活动 Action、目标速度为零；Rolling active 时要求新鲜 HOLDING 状态且 JTC 不活动。两者都 inactive 时也不能直接交接。所有路径都必须取得 EnableManager 域内只读 `~/<组>/confirm_standstill`（类型 `std_srvs/srv/Trigger`；组为 `<组>.motion_joints` 等于本页轨迹控制器关节的那个运动组）的成功确认；查询必须晚于本次终态/停车屏障，且响应仍新鲜。该服务复用模式切换已有的内部实时采样、连续窗口、反馈时效和 `stableActualInterval()` 判据，不切换模式、不使能、不写驱动命令。结果不明、超时或没有新的实时样本时不能返回空闲。网页不计算位置/速度停稳窗口。
 
 ArmPage 的后台任务是权限轮询的唯一调度者。RollingSender 拥有 epoch、sequence、确认和结束状态；绑定直接暴露 Phase、SendResult、MAX_POINTS、HOLDING 与 STATE_MAX_AGE_S。网页只检查会话权限、输入格式与保持命令衔接，轨迹数学准入由 Rolling 控制器负责，失败通过现有拒绝诊断反馈。
 

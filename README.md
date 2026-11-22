@@ -45,7 +45,7 @@ RT-Control 内部接口（不进公共仓库；行为以 `compat.yaml` 固定的
 | --- | --- |
 | `/controller_manager/list_controllers`、`/controller_manager/list_hardware_components` | 控制器与硬件组件状态 |
 | `/controller_manager/get_parameters`、各控制器 `get_parameters` | 运行中的模型（`robot_description`）、关节列表、限位 |
-| `/enable_manager/get_parameters`、`/<enable_manager>/confirm_standstill` | 受管关节、停稳确认 |
+| `/enable_manager/get_parameters`（`motion_groups`、`<组>.motion_joints`）、`/<enable_manager>/<组>/confirm_standstill` | 机械臂所在运动组的关节、停稳确认 |
 | `/<controller>/controller_state`、`/<controller>/query_state`、FJT `/_action/status` | 手臂轨迹执行状态 |
 | 诊断条目 `/robot/rt_control/enable_manager` | 使能状态与阶段 |
 
