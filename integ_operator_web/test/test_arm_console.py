@@ -592,3 +592,21 @@ def test_invalid_later_step_rejects_entire_sequence_before_motion(setup, bad_ste
             {"name": "A", "gear": "leisure", "dwell_s": 0}, bad_step])
     assert not driver.sent
     assert console.status("s1")["sequence"] is None
+
+
+def test_mixed_joint_units_keep_metres_in_trajectory(setup):
+    console, driver, _ = setup
+    # Change the second joint to a linear joint, keeping the same controlled names.
+    mixed = URDF.replace('name="left_joint2" type="revolute"',
+                         'name="left_joint2" type="prismatic"')
+    console.model = load_arm_model(mixed, JOINTS)
+    info = console.static_info()
+    assert [j["kind"] for j in info["joints"]] == ["revolute", "prismatic"]
+    target = {"left_joint1": 0.0, "left_joint2": 0.3}
+    preview = console.preview(target, "leisure")
+    assert preview["max_delta_deg"] == 0.0
+    assert preview["max_delta_mm"] == pytest.approx(100.0)
+    console.execute("s1", target, "leisure")
+    assert driver.sent[-1][1][-1].positions == pytest.approx((0.0, 0.3))
+    with pytest.raises(ConsoleError, match="mm"):
+        console._check_target({"left_joint1": 0.0, "left_joint2": 300.0})
