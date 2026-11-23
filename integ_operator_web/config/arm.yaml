@@ -79,6 +79,8 @@ gears:
     jerk_deg_s3: 240.0
 # Targets stay this far inside each Robot Model position limit.
 limit_margin_deg: 2.0
+# Prismatic joints (the lift, model -1050..0 mm): user 2026-11-23, page range -1033..-17 mm.
+prismatic_limit_margin_mm: 17.0
 # Planning and execution need joint feedback younger than this.
 max_feedback_age_s: 0.2
 # Below the left_arm_jtc start-consistency tolerance (1 deg).

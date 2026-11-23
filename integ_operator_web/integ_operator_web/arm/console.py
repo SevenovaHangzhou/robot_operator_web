@@ -141,8 +141,12 @@ class ArmConsole(ArmLease):
         return None
 
     def bounds(self) -> list[tuple[float, float]]:
-        margin = self.config.limit_margin
-        return [(j.lower + margin, j.upper - margin) for j in self.model.joints]
+        bounds = []
+        for joint in self.model.joints:
+            margin = (
+                self.config.prismatic_limit_margin if joint.prismatic else self.config.limit_margin)
+            bounds.append((joint.lower + margin, joint.upper - margin))
+        return bounds
 
     def _check_target(self, target: Mapping[str, float]) -> tuple[float, ...]:
         if self.model is None:
