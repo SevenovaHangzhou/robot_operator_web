@@ -633,4 +633,4 @@ def test_prismatic_margin_is_millimetres_not_degrees(setup):
     console.model = load_arm_model(mixed, JOINTS)
     (r_lo, r_hi), (p_lo, p_hi) = console.bounds()
     assert (r_lo, r_hi) == pytest.approx((-1.0 + math.radians(2.0), 1.0 - math.radians(2.0)))
-    assert (p_lo, p_hi) == pytest.approx((-1.033, -0.017))
+    assert (p_lo, p_hi) == pytest.approx((-1.05 + 0.017, -0.017))
