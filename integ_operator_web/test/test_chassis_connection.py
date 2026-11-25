@@ -65,3 +65,19 @@ def test_ready_idle_chassis_is_connected_and_can_enable():
     assert status["connected"] is True
     assert status["can_enable"] is True
     assert status["message"] == "未使能"
+
+
+def test_whole_machine_manager_with_more_joints_is_connected():
+    connection = ready_connection()
+    connection.managed = STEERING + DRIVE + ["updown", "left_joint1", "right_joint1"]
+
+    assert connection.status()["connected"] is True
+
+
+def test_manager_missing_a_chassis_axis_is_not_connected():
+    connection = ready_connection()
+    connection.managed = STEERING + DRIVE[:3] + ["updown"]
+
+    status = connection.status()
+    assert status["connected"] is False
+    assert status["message"] == "正在连接底盘接口"
