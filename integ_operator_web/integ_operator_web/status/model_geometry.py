@@ -27,6 +27,42 @@ def _origin(joint: ET.Element) -> tuple[tuple[float, float, float], tuple[float,
     return xyz, rpy
 
 
+def _rotation(rpy: Iterable[float]) -> list[list[float]]:
+    roll, pitch, yaw = rpy
+    cr, sr, cp, sp, cy, sy = (
+        math.cos(roll),
+        math.sin(roll),
+        math.cos(pitch),
+        math.sin(pitch),
+        math.cos(yaw),
+        math.sin(yaw),
+    )
+    return [
+        [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+        [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+        [-sp, cp * sr, cp * cr],
+    ]
+
+
+def _in_base(joint: ET.Element, by_child: dict) -> tuple[float, ...]:
+    """Origin of `joint` in base_link with every joint at zero, through intermediate parents."""
+    point, _ = _origin(joint)
+    parent = joint.find("parent")
+    link = parent.get("link") if parent is not None else None
+    while link != "base_link":
+        if link not in by_child:
+            raise ValueError(f"no chain from {joint.get('name')} to base_link")
+        above = by_child.pop(link)  # a cycle cannot loop forever
+        xyz, rpy = _origin(above)
+        rotation = _rotation(rpy)
+        point = tuple(
+            sum(rotation[row][k] * point[k] for k in range(3)) + xyz[row] for row in range(3)
+        )
+        parent = above.find("parent")
+        link = parent.get("link") if parent is not None else None
+    return point
+
+
 def _yaw_deg(rpy: Iterable[float]) -> float:
     return round(math.degrees(tuple(rpy)[2]), 2)
 
@@ -51,11 +87,20 @@ def frames(urdf_text: str) -> dict:
         )
     sonar.sort(key=lambda item: item["channel"])
 
-    wheels = [
-        {"joint": name, "x_m": _origin(joints[name])[0][0], "y_m": _origin(joints[name])[0][1]}
-        for name in STEER_JOINTS
-        if name in joints
-    ]
+    by_child = {
+        joint.find("child").get("link"): joint
+        for joint in root.findall("joint")
+        if joint.find("child") is not None
+    }
+    wheels = []
+    for name in STEER_JOINTS:
+        if name in joints:
+            # Rear modules may hang below the suspension rather than directly on base_link.
+            try:
+                x, y, _ = _in_base(joints[name], dict(by_child))
+            except ValueError:
+                continue
+            wheels.append({"joint": name, "x_m": round(x, 6), "y_m": round(y, 6)})
     body = None
     if wheels:
         half_length = max(abs(item["x_m"]) for item in wheels)
