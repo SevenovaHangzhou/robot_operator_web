@@ -1,5 +1,6 @@
 """Console admission checks, poses and Robot Model handling with a fake driver. No ROS."""
 
+import math
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -35,6 +36,7 @@ CONFIG = {
         },
     },
     "limit_margin_deg": 2.0,
+    "prismatic_limit_margin_mm": 17.0,
     "max_feedback_age_s": 0.2,
     "start_tolerance_deg": 0.5,
     "sample_period_s": 0.01,
@@ -592,3 +594,43 @@ def test_invalid_later_step_rejects_entire_sequence_before_motion(setup, bad_ste
             {"name": "A", "gear": "leisure", "dwell_s": 0}, bad_step])
     assert not driver.sent
     assert console.status("s1")["sequence"] is None
+
+
+def test_mixed_joint_units_keep_metres_in_trajectory(setup):
+    console, driver, _ = setup
+    # Change the second joint to a linear joint, keeping the same controlled names.
+    mixed = URDF.replace('name="left_joint2" type="revolute"',
+                         'name="left_joint2" type="prismatic"')
+    console.model = load_arm_model(mixed, JOINTS)
+    info = console.static_info()
+    assert [j["kind"] for j in info["joints"]] == ["revolute", "prismatic"]
+    target = {"left_joint1": 0.0, "left_joint2": 0.3}
+    preview = console.preview(target, "leisure")
+    assert preview["max_delta_deg"] == 0.0
+    assert preview["max_delta_mm"] == pytest.approx(100.0)
+    console.execute("s1", target, "leisure")
+    assert driver.sent[-1][1][-1].positions == pytest.approx((0.0, 0.3))
+    with pytest.raises(ConsoleError, match="mm"):
+        console._check_target({"left_joint1": 0.0, "left_joint2": 300.0})
+
+
+def test_upstream_lift_is_included_in_preview_with_arms_first():
+    model_xml = URDF.replace('name="fix" type="fixed"', 'name="fix" type="prismatic"').replace(
+        '<parent link="world"/><child link="mount"/></joint>',
+        '<parent link="world"/><child link="mount"/>'
+        '<limit lower="-1.05" upper="0" velocity="0.1666" effort="10"/></joint>')
+    model = load_arm_model(model_xml, JOINTS + ["fix"])
+    assert model.root_link == "world"
+    assert set(model.arm_links) == {"mount", "l1", "l2"}
+    assert "other" not in model.arm_links
+    assert load_arm_model(model_xml, ["fix"] + JOINTS).arm_links == model.arm_links
+
+
+def test_prismatic_margin_is_millimetres_not_degrees(setup):
+    console, _, _ = setup
+    mixed = URDF.replace('name="left_joint2" type="revolute"', 'name="left_joint2" type="prismatic"')
+    mixed = mixed.replace('lower="-0.5" upper="2.0" velocity="0.1"', 'lower="-1.05" upper="0" velocity="0.1"')
+    console.model = load_arm_model(mixed, JOINTS)
+    (r_lo, r_hi), (p_lo, p_hi) = console.bounds()
+    assert (r_lo, r_hi) == pytest.approx((-1.0 + math.radians(2.0), 1.0 - math.radians(2.0)))
+    assert (p_lo, p_hi) == pytest.approx((-1.05 + 0.017, -0.017))

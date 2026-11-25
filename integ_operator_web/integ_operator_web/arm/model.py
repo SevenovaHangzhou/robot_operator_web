@@ -28,9 +28,14 @@ class ModelError(ValueError):
 @dataclass(frozen=True)
 class JointLimit:
     name: str
-    lower: float
+    lower: float  # rad (revolute) or m (prismatic)
     upper: float
-    velocity: float
+    velocity: float  # rad/s or m/s
+    kind: str = "revolute"  # Robot Model joint type: revolute or prismatic
+
+    @property
+    def prismatic(self) -> bool:
+        return self.kind == "prismatic"
 
 
 @dataclass(frozen=True)
@@ -68,8 +73,22 @@ def load_arm_model(
             raise ModelError(f"joint limit incomplete in the Robot Model: {name}") from exc
         if not all(math.isfinite(value) for value in values) or values[0] >= values[1]:
             raise ModelError(f"joint limit invalid in the Robot Model: {name}")
-        limits.append(JointLimit(name, *values))
-    root = elements[joints[0]].find("parent").get("link")
+        limits.append(JointLimit(name, *values, kind=joint.get("type")))
+    # Start at the common ancestor of all controlled joints. The first arm joint's parent
+    # excludes an upstream lift when that prismatic joint is also controlled.
+    parent_of = {
+        joint.find("child").get("link"): joint.find("parent").get("link")
+        for joint in elements.values()
+    }
+    ancestors = []
+    for name in joints:
+        link = elements[name].find("parent").get("link")
+        chain = [link]
+        while link in parent_of:
+            link = parent_of[link]
+            chain.append(link)
+        ancestors.append(chain)
+    root = next(link for link in ancestors[0] if all(link in chain for chain in ancestors))
     return ArmModel(
         tuple(limits), root, _robot_view(robot, mesh_prefix), _arm_links(robot, root, set(joints)),
         sha256(urdf.encode()).hexdigest(),

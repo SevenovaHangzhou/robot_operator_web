@@ -10,14 +10,15 @@ const jogUrl = new URL('/jog', location.href);
 jogUrl.port = '18131';
 $("jog-link").href = jogUrl.href;
 const DEG = 180 / Math.PI;
-const RAD = Math.PI / 180;
-const CHANGED_DEG = 0.05;
+const unitFor = (joint) => joint.kind === "prismatic"
+  ? { scale: 1000, unit: "mm", step: "1", changed: 0.5 }
+  : { scale: DEG, unit: "°", step: "0.1", changed: 0.05 };
 
 const state = {
   info: null,
   status: null,
   gear: null,
-  target: {}, // rad, per joint
+  target: {}, // SI: rad for revolute joints, m for prismatic joints
   edited: false, // true once the operator moved a slider since the last sync
   pending: null, // {kind: "target"}
   poses: [],
@@ -233,34 +234,40 @@ function markGear() {
 function buildJoints() {
   const container = $("joints");
   container.replaceChildren(...state.info.joints.map((joint) => {
+    const units = unitFor(joint);
     const row = document.createElement("div");
     row.className = "joint";
     row.dataset.joint = joint.name;
     const label = document.createElement("label");
     label.textContent = joint.name.replace(/^left_joint/, "J");
     label.title = joint.name;
+    label.id = `label-${joint.name}`;
+    label.textContent += ` (${units.unit})`;
     const range = document.createElement("input");
     range.type = "range";
-    range.min = (joint.lower * DEG).toFixed(1);
-    range.max = (joint.upper * DEG).toFixed(1);
-    range.step = "0.1";
+    range.min = (joint.lower * units.scale).toFixed(1);
+    range.max = (joint.upper * units.scale).toFixed(1);
+    range.step = units.step;
+    range.setAttribute("aria-labelledby", label.id);
     const number = document.createElement("input");
     number.type = "number";
-    number.step = "0.1";
+    number.step = units.step;
+    number.id = `target-${joint.name}`;
+    label.htmlFor = number.id;
     number.min = range.min;
     number.max = range.max;
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.innerHTML = `<span class="measured">实测 --</span><span>${range.min}° ~ ${range.max}°</span>`;
-    const set = (degrees) => {
-      const clamped = Math.min(Math.max(degrees, joint.lower * DEG), joint.upper * DEG);
-      state.target[joint.name] = clamped * RAD;
+    meta.innerHTML = `<span class="measured">实测 --</span><span>${range.min} ${units.unit} ~ ${range.max} ${units.unit}</span>`;
+    const set = (displayValue) => {
+      const clamped = Math.min(Math.max(displayValue, joint.lower * units.scale), joint.upper * units.scale);
+      state.target[joint.name] = clamped / units.scale;
       state.edited = true;
       renderTargets();
     };
     range.addEventListener("input", () => set(Number(range.value)));
     number.addEventListener("change", () => {
-      if (Number.isFinite(Number(number.value))) set(Number(number.value));
+      if (number.value.trim() && Number.isFinite(number.valueAsNumber)) set(number.valueAsNumber);
     });
     row.append(label, range, number, meta);
     return row;
@@ -292,20 +299,21 @@ function renderTargets() {
   const moving = state.status && state.status.moving;
   for (const row of $("joints").children) {
     const name = row.dataset.joint;
+    const units = unitFor(state.info.joints.find((joint) => joint.name === name));
     const [, range, number] = row.children;
-    const value = (moving ? moving.target[name] : state.target[name]) * DEG;
+    const value = (moving ? moving.target[name] : state.target[name]) * units.scale;
     if (Number.isFinite(value)) {
       if (document.activeElement !== number) number.value = value.toFixed(1);
       range.value = value.toFixed(1);
     }
-    const current = positions[name] * DEG;
+    const current = positions[name] * units.scale;
     row.querySelector(".measured").textContent =
-      Number.isFinite(current) ? `实测 ${current.toFixed(2)}°` : "实测 --";
-    row.classList.toggle("changed", Math.abs(value - current) > CHANGED_DEG);
+      Number.isFinite(current) ? `实测 ${current.toFixed(2)} ${units.unit}` : "实测 --";
+    row.classList.toggle("changed", Math.abs(value - current) > units.changed);
   }
   const ghostTarget = moving ? moving.target : state.target;
   const differs = state.info.joints.some(
-    (joint) => Math.abs((ghostTarget[joint.name] - positions[joint.name]) * DEG) > CHANGED_DEG);
+    (joint) => Math.abs((ghostTarget[joint.name] - positions[joint.name]) * unitFor(joint).scale) > unitFor(joint).changed);
   if (viewer) viewer.setGhost(ghostTarget, Boolean(moving) || differs);
 }
 
@@ -321,13 +329,17 @@ async function openConfirm(kind) {
   $("confirm-title").textContent = "发送到目标";
   $("confirm-body").textContent =
     `${gear.label}档 · 预计 ${preview.duration_s.toFixed(1)} s · 最大关节变化 ` +
-    `${preview.max_delta_deg.toFixed(1)}°（S 型曲线，各轴同时到达）`;
+    `${preview.max_delta_deg.toFixed(1)}°` +
+    (state.info.joints.some((joint) => joint.kind === "prismatic")
+      ? ` / ${preview.max_delta_mm.toFixed(1)} mm` : "") +
+    "（S 型曲线，各轴同时到达）";
   const positions = measured();
   const rows = state.info.joints.map((joint) => {
-    const from = positions[joint.name] * DEG;
-    const to = state.target[joint.name] * DEG;
-    return `<tr><td>${joint.name}</td><td>${from.toFixed(1)}°</td><td>→</td>` +
-      `<td>${to.toFixed(1)}°</td><td>${(to - from >= 0 ? "+" : "") + (to - from).toFixed(1)}°</td></tr>`;
+    const units = unitFor(joint);
+    const from = positions[joint.name] * units.scale;
+    const to = state.target[joint.name] * units.scale;
+    return `<tr><td>${joint.name}</td><td>${from.toFixed(1)} ${units.unit}</td><td>→</td>` +
+      `<td>${to.toFixed(1)} ${units.unit}</td><td>${(to - from >= 0 ? "+" : "") + (to - from).toFixed(1)} ${units.unit}</td></tr>`;
   });
   $("confirm-table").innerHTML = rows.join("");
   $("confirm").showModal();

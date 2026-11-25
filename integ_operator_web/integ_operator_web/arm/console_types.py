@@ -30,7 +30,8 @@ class Gear:
 @dataclass(frozen=True)
 class ConsoleConfig:
     gears: tuple[Gear, ...]
-    limit_margin: float  # rad kept inside each Robot Model position limit
+    limit_margin: float  # rad kept inside each revolute Robot Model position limit
+    prismatic_limit_margin: float  # m kept inside each prismatic Robot Model position limit
     max_feedback_age: float  # s
     start_tolerance: float  # rad; must stay below the JTC start-consistency tolerance
     sample_period: float  # s between trajectory points
@@ -64,6 +65,7 @@ def config_from_mapping(document: Mapping) -> ConsoleConfig:
     config = ConsoleConfig(
         gears=gears,
         limit_margin=radians(float(document["limit_margin_deg"])),
+        prismatic_limit_margin=float(document["prismatic_limit_margin_mm"]) / 1000.0,
         max_feedback_age=float(document["max_feedback_age_s"]),
         start_tolerance=radians(float(document["start_tolerance_deg"])),
         sample_period=float(document["sample_period_s"]),
@@ -74,8 +76,14 @@ def config_from_mapping(document: Mapping) -> ConsoleConfig:
     for name in ("sample_period", "stop_lead", "start_delay"):
         if not 0.0 < getattr(config, name) <= 0.1:
             raise ValueError(f"{name}_s must be in (0, 0.1]")
-    if config.limit_margin < 0.0 or config.max_feedback_age <= 0.0:
-        raise ValueError("limit_margin_deg must be >= 0 and max_feedback_age_s > 0")
+    if (
+        config.limit_margin < 0.0
+        or config.prismatic_limit_margin < 0.0
+        or config.max_feedback_age <= 0.0
+    ):
+        raise ValueError(
+            "limit_margin_deg and prismatic_limit_margin_mm must be >= 0 and max_feedback_age_s > 0"
+        )
     return config
 
 

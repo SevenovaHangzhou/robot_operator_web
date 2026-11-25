@@ -141,8 +141,12 @@ class ArmConsole(ArmLease):
         return None
 
     def bounds(self) -> list[tuple[float, float]]:
-        margin = self.config.limit_margin
-        return [(j.lower + margin, j.upper - margin) for j in self.model.joints]
+        bounds = []
+        for joint in self.model.joints:
+            margin = (
+                self.config.prismatic_limit_margin if joint.prismatic else self.config.limit_margin)
+            bounds.append((joint.lower + margin, joint.upper - margin))
+        return bounds
 
     def _check_target(self, target: Mapping[str, float]) -> tuple[float, ...]:
         if self.model is None:
@@ -150,7 +154,8 @@ class ArmConsole(ArmLease):
         if set(target) != set(self.joint_names):
             raise ConsoleError("bad_target", "目标必须包含全部受控关节")
         values = []
-        for (lower, upper), name in zip(self.bounds(), self.joint_names):
+        for (lower, upper), joint in zip(self.bounds(), self.model.joints):
+            name = joint.name
             value = target[name]
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ConsoleError("bad_target", f"{name} 目标不是数字")
@@ -158,8 +163,8 @@ class ArmConsole(ArmLease):
             if not math.isfinite(value) or not lower <= value <= upper:
                 raise ConsoleError(
                     "target_out_of_range",
-                    f"{name} 目标 {math.degrees(value):.1f}° 超出允许范围 "
-                    f"[{math.degrees(lower):.1f}°, {math.degrees(upper):.1f}°]",
+                    f"{name} 目标 {_show(joint, value)} 超出允许范围 "
+                    f"[{_show(joint, lower)}, {_show(joint, upper)}]",
                 )
             values.append(value)
         return tuple(values)
@@ -181,7 +186,12 @@ class ArmConsole(ArmLease):
             plan = plan_move(start, goal, self._limits(gear, start, goal))
             return {
                 "duration_s": plan.duration,
-                "max_delta_deg": max(math.degrees(abs(g - s)) for s, g in zip(start, goal)),
+                "max_delta_deg": max(
+                    [math.degrees(abs(g - s)) for j, s, g in zip(self.model.joints, start, goal)
+                     if not j.prismatic] or [0.0]),
+                "max_delta_mm": max(
+                    [1000.0 * abs(g - s) for j, s, g in zip(self.model.joints, start, goal)
+                     if j.prismatic] or [0.0]),
                 "gear": gear.name,
             }
 
@@ -537,7 +547,8 @@ class ArmConsole(ArmLease):
             return {
                 "controller": self.controller,
                 "joints": [
-                    {"name": j.name, "lower": lo, "upper": hi, "model_velocity": j.velocity}
+                    {"name": j.name, "lower": lo, "upper": hi, "model_velocity": j.velocity,
+                     "kind": j.kind}
                     for j, (lo, hi) in zip(self.model.joints, self.bounds())
                 ]
                 if self.model
@@ -555,3 +566,8 @@ class ArmConsole(ArmLease):
                 "poses": self.poses.list() if self.poses else [],
                 "arm_links": list(self.model.arm_links) if self.model else [],
             }
+
+
+def _show(joint, value: float) -> str:
+    """A joint value in the page unit: degrees, or millimetres for prismatic joints."""
+    return f"{value * 1000.0:.0f} mm" if joint.prismatic else f"{math.degrees(value):.1f}°"
