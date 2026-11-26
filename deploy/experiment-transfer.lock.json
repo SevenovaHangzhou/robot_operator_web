@@ -1,0 +1,9 @@
+{
+  "schema": "experiment-transfer-dependency/1",
+  "distribution": "robot-experiment-transfer",
+  "version": "1.1.0",
+  "repository": "https://github.com/SevenovaHangzhou/robot_dynamic_parameter_Identification.git",
+  "revision": "15c7811f81b099f5c16e0639dbd6447810739733",
+  "subdirectory": "toolchain/remote_execution",
+  "optional": true
+}

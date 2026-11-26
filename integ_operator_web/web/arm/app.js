@@ -1,4 +1,5 @@
 // Arm console page. The server checks every command; this page only proposes targets.
+import { receivedSequencesUI } from "./received-sequences.mjs";
 import { ArmViewer } from "./viewer.js";
 import { CompletionSound } from "./completion-sound.mjs";
 import { VacuumControls } from "./vacuum-controls.mjs";
@@ -22,6 +23,7 @@ const state = {
   edited: false, // true once the operator moved a slider since the last sync
   pending: null, // {kind: "target"}
   poses: [],
+  experimentPackage: null,
   sequence: [], // {name, gear, dwell_s}, in execution order (repeats allowed)
 };
 let viewer = null;
@@ -29,6 +31,7 @@ let socket = null;
 let nextRequest = 1;
 const pending = new Map(); // request id -> {resolve, reject}
 let loadedModelKey = null;
+let received = null;
 const completionAudio = new Audio('/static/arm/action-complete.mp3');
 completionAudio.preload = 'auto';
 const completionSound = new CompletionSound(completionAudio, (message) => toast(message, true));
@@ -396,6 +399,7 @@ function renderPoses(poses) {
     add.className = "small add";
     add.textContent = "+ 序列";
     add.addEventListener("click", () => {
+      if (state.experimentPackage) return toast("请先清空已载入动作包，再编辑普通序列", true);
       const dwell = defaultDwell();
       if (dwell === null) return;
       if (state.sequence.length >= 50) return toast("序列最多 50 个位姿", true);
@@ -416,7 +420,7 @@ function renderPoses(poses) {
   }));
   // Drop deleted poses from the sequence being edited.
   const names = new Set(poses.map((pose) => pose.name));
-  const kept = state.sequence.filter((step) => names.has(step.name));
+  const kept = state.experimentPackage ? state.sequence : state.sequence.filter((step) => names.has(step.name));
   if (kept.length !== state.sequence.length) {
     state.sequence = kept;
     renderSequence();
@@ -441,7 +445,7 @@ function renderSequence() {
       return option;
     }));
     speed.value = step.gear;
-    speed.disabled = Boolean(running);
+    speed.disabled = Boolean(running || state.experimentPackage);
     speed.addEventListener("change", () => { step.gear = speed.value; });
     const dwellLabel = document.createElement("label");
     dwellLabel.textContent = "停留 ";
@@ -451,7 +455,7 @@ function renderSequence() {
     dwell.step = "0.1";
     dwell.value = String(step.dwell_s);
     dwell.setAttribute("aria-label", `第 ${index + 1} 段停留秒数`);
-    dwell.disabled = Boolean(running);
+    dwell.disabled = Boolean(running || state.experimentPackage);
     dwell.addEventListener("change", () => {
       const value = Number(dwell.value);
       if (dwell.value.trim() && Number.isFinite(value) && value >= 0) step.dwell_s = value;
@@ -462,7 +466,7 @@ function renderSequence() {
     if (running) {
       item.classList.toggle("done", index < running.index);
       item.classList.toggle("current", index === running.index);
-    } else {
+    } else if (!state.experimentPackage) {
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "small remove";
@@ -485,7 +489,15 @@ function renderSequence() {
 
 $("sequence-run").addEventListener("click", async () => {
   if (!state.sequence.length) return;
-  await guarded(() => post("/api/run_sequence", { steps: state.sequence }));
+  if (state.experimentPackage) {
+    if (!confirm(`播放收到的序列「${state.experimentPackage.preset_id}」？\n请核对现场、载荷、起点和周边空间；点击后机械臂将运动。`)) return;
+    await guarded(async () => {
+      const command = received.model.command();
+      const result = await post("/api/run_experiment_package", command);
+      toast(result.reused ? "此包已有执行记录，未重复播放" : "已提交机器人本地执行");
+      await received.refresh();
+    });
+  } else await guarded(() => post("/api/run_sequence", { steps: state.sequence }));
 });
 function defaultDwell() {
   const input = $("sequence-dwell");
@@ -497,12 +509,14 @@ function defaultDwell() {
   return value;
 }
 $("sequence-apply").addEventListener("click", () => {
+  if (state.experimentPackage) return;
   const dwell = defaultDwell();
   if (dwell === null) return;
   state.sequence = state.sequence.map((step) => ({ ...step, gear: state.gear, dwell_s: dwell }));
   renderSequence();
 });
 $("sequence-clear").addEventListener("click", () => {
+  state.experimentPackage = null; received?.model.clear();
   state.sequence = [];
   renderSequence();
 });
@@ -605,11 +619,14 @@ function updateButtons() {
     for (const input of row.querySelectorAll("input")) input.disabled = moving;
   }
   for (const button of $("poses").querySelectorAll("button.motion")) button.disabled = !ready || sequencing;
-  for (const button of $("poses").querySelectorAll("button.add")) button.disabled = sequencing;
+  for (const button of $("poses").querySelectorAll("button.add")) button.disabled = sequencing || Boolean(state.experimentPackage);
   for (const button of $("poses").querySelectorAll("button:not(.motion):not(.add)")) button.disabled = !mine;
-  $("sequence-run").disabled = !ready || sequencing || !state.sequence.length;
+  $("sequence-run").disabled = !ready || sequencing || !state.sequence.length ||
+    Boolean(state.experimentPackage && (!received || received.model.reason(received.model.rows.find(r => r.package_id === state.experimentPackage.package_id))));
+  $("sequence-run").textContent = state.experimentPackage ? "播放收到的序列" : "依次执行";
+  received?.update();
   $("sequence-dwell").disabled = sequencing;
-  $("sequence-apply").disabled = sequencing || !state.sequence.length;
+  $("sequence-apply").disabled = sequencing || !state.sequence.length || Boolean(state.experimentPackage);
   $("sequence-clear").disabled = sequencing || !state.sequence.length;
 }
 
@@ -650,6 +667,7 @@ function updateButtons() {
     try {
       if (!state.info || !state.status) throw new Error("请先登录并等待操作台状态更新");
       const prepared = preparePreset(catalog, select.value, state.poses, state.status, state.info.gears);
+      state.experimentPackage = null; received?.model.clear();
       state.sequence = prepared.names.map((name) => ({ name, gear: prepared.gear, dwell_s: prepared.dwell_s }));
       state.gear = prepared.gear;
       $("sequence-dwell").value = String(prepared.dwell_s);
@@ -667,6 +685,8 @@ function updateButtons() {
   list.parentNode.insertBefore(row, list);
   list.parentNode.insertBefore(note, list);
 })().catch((error) => toast(`测试序列入口不可用：${error.message}`, true));
+
+received = receivedSequencesUI({state,render:() => state.info && renderSequence(),toast});
 
 // An existing session (e.g. from the chassis page) connects directly; otherwise 4401 shows login.
 start();

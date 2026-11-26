@@ -83,3 +83,11 @@ systemctl --user daemon-reload && systemctl --user enable --now robot-operator-w
 升级：对新提交运行 `deploy/install.sh`，再 `systemctl --user restart robot-operator-web`；回滚同理指向旧提交。
 `deploy/start.sh` 只读取环境文件中的值；`OPERATOR_WEB_VIEW_MODEL` 填该机型的模型文件（与 `robot_driver`
 机型 manifest 的 `xacro_file` 一致）。页面功能与启动参数见 [integ_operator_web/README.md](integ_operator_web/README.md)。
+
+## 可选：18141动作包接收
+
+工作站发送完整签名数据包，机器人本地持久化后，操作员在 `/arm` 的“载入动作序列 · 来自18141”中选择并载入，再点击“播放收到的序列”。接收列表每5秒更新；载入不使能、不获取控制权、不运动。载入后目标、档位及停留锁定；普通位姿库和预设继续保留。停止、断线和控制权规则仍由原ArmConsole处理，当前不是断网自主执行。
+
+可选Python包 `robot-experiment-transfer==1.1.0` 由 [robot_dynamic_parameter_Identification](https://github.com/SevenovaHangzhou/robot_dynamic_parameter_Identification) 的 `toolchain/remote_execution` 构建。机器人不需要18141、MuJoCo或分析库。使用固定提交构建并核验wheel后安装到专用目录；设置 `OPERATOR_WEB_PYTHONPATH` 指向该目录，`ROBOT_EXPERIMENT_RECEIVER_CONFIG` 指向机器人本地接收配置。未设置接收配置时不导入依赖、不注册接收路由，原操作保持不变；开启时缺依赖直接报错，不静默降级。
+
+部署配置和验证步骤见 [动作包交接](docs/experiment-transfer.md)。该扩展仅增加HTTP数据传输和既有WebSocket命令，不增加ROS/硬件接口。接收端只接受绑定当前模型、规划器、关节顺序、逐轴单位、档位和现场上下文的签名包；配置不同必须重新生成并审核，不能通过复制哈希解锁。

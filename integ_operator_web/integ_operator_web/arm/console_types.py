@@ -103,6 +103,8 @@ class Driver(Protocol):
         start: float,
         *,
         start_delay: float = 0.0,
+        trace=None,
+        takeover_deadline: Optional[float] = None,
     ) -> float: ...
 
     def cancel(self) -> None: ...

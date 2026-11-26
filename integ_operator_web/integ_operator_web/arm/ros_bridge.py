@@ -297,12 +297,16 @@ class RosBridge(Node):
         start: float,
         *,
         start_delay: float = 0.0,
+        trace=None,
+        takeover_deadline: Optional[float] = None,
     ) -> float:
         action = self._action
         if action is None or not action.server_is_ready():
             raise RuntimeError("轨迹 action 不可用")
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = list(joints)
+        if trace is not None:
+            points = tuple(points)
         for point in points:
             goal.trajectory.points.append(
                 JointTrajectoryPoint(
@@ -318,6 +322,10 @@ class RosBridge(Node):
             start = max(start, time.monotonic() + start_delay)
         stamp = self.get_clock().now() + RosDuration(seconds=start - time.monotonic())
         goal.trajectory.header.stamp = stamp.to_msg()
+        if trace is not None:
+            trace.event("submitted", {"header_ns": int(stamp.nanoseconds), "joint_names": list(joints),
+                "point_count": len(points), "duration_s": points[-1].time,
+                "final_q_rad": list(points[-1].positions)})
 
         def accepted(future) -> None:
             try:
@@ -330,6 +338,17 @@ class RosBridge(Node):
                 self._readback.evidence.resolved()
                 done(False, "控制器拒绝轨迹（请查JTC日志：点数上限、起点一致性或参数校验）")
                 return
+            if trace is not None:
+                try:
+                    trace.event("accepted", {"goal_id": bytes(handle.goal_id.uuid).hex(),
+                        "ros_time_ns": int(self.get_clock().now().nanoseconds)})
+                except Exception as exc:
+                    try:
+                        handle.cancel_goal_async()
+                    finally:
+                        self._readback.evidence.resolved(unknown=True)
+                        done(False, f"实验事件记录失败；停止未确认：{exc}")
+                    return
             with self._lock:
                 self._goal = handle
 
@@ -342,6 +361,15 @@ class RosBridge(Node):
                     return
                 result = wrapped.result
                 ok = wrapped.status == 4 and result.error_code == 0  # STATUS_SUCCEEDED
+                if trace is not None:
+                    try:
+                        trace.event("result", {"success": ok, "goal_id": bytes(handle.goal_id.uuid).hex(),
+                            "ros_time_ns": int(self.get_clock().now().nanoseconds),
+                            "controller_status": wrapped.status, "error_code": result.error_code})
+                    except Exception as exc:
+                        self._readback.evidence.resolved(unknown=True)
+                        done(False, f"实验事件记录失败：{exc}")
+                        return
                 self._readback.evidence.resolved()
                 done(
                     ok,
@@ -355,6 +383,10 @@ class RosBridge(Node):
                 self._readback.evidence.resolved(unknown=True)
                 done(False, f'轨迹结束请求结果未确认：{exc}')
 
+        if takeover_deadline is not None and time.monotonic() >= takeover_deadline:
+            raise RuntimeError("停车发送已超过接管时刻；取消/保持及受限停止未确认")
+        if trace is not None and time.monotonic() >= start:
+            raise RuntimeError("实验记录超过轨迹起始时刻；未发送过期轨迹")
         self._readback.evidence.submitted()
         try:
             action.send_goal_async(goal).add_done_callback(accepted)

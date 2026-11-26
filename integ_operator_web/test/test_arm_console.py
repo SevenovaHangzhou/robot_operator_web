@@ -76,7 +76,7 @@ class Driver:
         self.starts = []
         self.cancelled = 0
 
-    def send(self, joints, points, done, start, *, start_delay=0.0):
+    def send(self, joints, points, done, start, *, start_delay=0.0, takeover_deadline=None):
         self.sent.append((tuple(joints), list(points), done))
         self.starts.append(start)
         return start
@@ -290,7 +290,7 @@ def test_delayed_move_stamp_is_used_by_status_and_stop(setup):
     original_send = driver.send
     delays = []
 
-    def delayed_send(joints, points, done, start, *, start_delay=0.0):
+    def delayed_send(joints, points, done, start, *, start_delay=0.0, takeover_deadline=None):
         delays.append(start_delay)
         if start_delay:
             clock.now += 0.08
@@ -543,7 +543,7 @@ def test_low_speed_sequence_advances_within_controller_point_budget(setup):
     console.config = config_from_mapping(cfg)
     original_send = driver.send
 
-    def bounded_send(joints, points, done, start, *, start_delay=0.0):
+    def bounded_send(joints, points, done, start, *, start_delay=0.0, takeover_deadline=None):
         assert len(points) <= 32
         return original_send(joints, points, done, start, start_delay=start_delay)
 

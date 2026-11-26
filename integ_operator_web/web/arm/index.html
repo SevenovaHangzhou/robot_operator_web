@@ -103,6 +103,12 @@
             <button id="sequence-apply" type="button">当前速度和停留应用到全部段</button>
           </div>
           <p class="hint">每段速度用于前往该位姿；停留从到位后开始，最后一段也停留。每段可单独修改。</p>
+          <section id="received-experiments" aria-label="载入动作序列">
+            <div class="head"><b>载入动作序列 · 来自18141</b></div>
+            <div class="row"><select id="received-select" aria-label="收到的动作序列"><option value="">正在读取…</option></select></div>
+            <div class="row"><button id="received-load" type="button" disabled>载入动作序列（不执行）</button><button id="received-refresh" type="button">刷新接收列表</button></div>
+            <p id="received-status" class="hint" role="status"></p>
+          </section>
           <ol id="sequence" class="sequence-list"></ol>
           <p id="sequence-empty" class="hint">在上方位姿上点“+ 序列”按顺序加入，可重复加入。</p>
           <div class="row">

@@ -25,7 +25,7 @@ from .console_types import (
 from .lease import ArmLease
 from .model import ArmModel
 from .poses import PoseError, PoseStore
-from .trajectory import Limits, TrajectoryPoint, plan_move, plan_stop
+from .trajectory import Limits, plan_move, stopping_points
 
 
 class ArmConsole(ArmLease):
@@ -220,6 +220,9 @@ class ArmConsole(ArmLease):
                 gear = self.config.gear(gear_name)
                 goal = self._check_target(target)
                 start = self._measured()
+                if _sequence is not None and _sequence.get("workflow"):
+                    _sequence["workflow"].preflight()
+                    _sequence["workflow"].fixed_check(start)
                 plan = plan_move(start, goal, self._limits(gear, start, goal))
                 if plan.duration <= 0.0:
                     raise ConsoleError("no_motion", "目标与当前位置相同")
@@ -242,7 +245,7 @@ class ArmConsole(ArmLease):
 
     def run_sequence(
         self, session: str, names: Sequence[str], gear_name: str, dwell_s: float = 0.0,
-        *, steps: Optional[Sequence[dict]] = None,
+        *, steps: Optional[Sequence[dict]] = None, _workflow=None,
     ) -> dict:
         """Go to saved poses one after another; every step passes the normal checks.
 
@@ -270,6 +273,8 @@ class ArmConsole(ArmLease):
                 raise ConsoleError("bad_dwell", f"第 {index} 段停留时间必须为非负有限秒数")
             self.config.gear(step["gear"])
             normalized.append({"name": step["name"], "gear": step["gear"], "dwell_s": float(dwell)})
+            if _workflow is not None:
+                normalized[-1]["target"] = dict(step["target"])
         names = [step["name"] for step in normalized]
         with self._lock:
             self._require_lease(session)
@@ -280,7 +285,7 @@ class ArmConsole(ArmLease):
                 raise ConsoleError("not_ready", reason)
             for index, name in enumerate(names, start=1):
                 try:
-                    values = self._pose_store().get(name)
+                    values = tuple(normalized[index-1]["target"][j] for j in self.joint_names) if _workflow is not None else self._pose_store().get(name)
                 except PoseError as exc:
                     raise ConsoleError("bad_pose", f"第 {index} 个：{exc}") from exc
                 try:
@@ -295,6 +300,11 @@ class ArmConsole(ArmLease):
                 reason = self._motion_ready()
                 if reason:
                     raise ConsoleError("not_ready", reason)
+                if _workflow is not None:
+                    _workflow.preflight()
+                    actual = self._measured()
+                    if not _workflow.check_start(actual):
+                        raise ConsoleError("start_changed", "模式切换后起点与审核不一致")
                 self._reserve_motion(session)
                 self._sequence = {
                     "session": session,
@@ -304,6 +314,7 @@ class ArmConsole(ArmLease):
                     "index": 0,
                     "dwell_s": normalized[0]["dwell_s"],
                     "wait_until": None,
+                    "workflow": _workflow,
                 }
                 self._last_result = ""
                 sequence = self._sequence
@@ -319,6 +330,8 @@ class ArmConsole(ArmLease):
             if sequence["index"] >= total:
                 self._sequence = None
                 self._last_result = f"序列完成（{total} 个位姿）"
+                if sequence.get("workflow"):
+                    sequence["workflow"].finish(True, self._last_result)
                 return
             index, name = sequence["index"], sequence["names"][sequence["index"]]
             step = sequence["steps"][index]
@@ -326,13 +339,17 @@ class ArmConsole(ArmLease):
             sequence["dwell_s"] = step["dwell_s"]
             label = f"{index + 1}/{total} {name}"
             try:
-                values = self._pose_store().get(name)
+                if sequence.get("workflow"):
+                    sequence["workflow"].step(index)
+                    values = tuple(step["target"][j] for j in self.joint_names)
+                else:
+                    values = self._pose_store().get(name)
                 self.execute(
                     sequence["session"], dict(zip(self.joint_names, values)),
                     sequence["gear"], label, _sequence=sequence,
                 )
                 return
-            except (ConsoleError, PoseError) as exc:
+            except (ConsoleError, PoseError, ValueError, OSError) as exc:
                 if self._sequence is not sequence:
                     return
                 if isinstance(exc, ConsoleError) and exc.code == "no_motion":
@@ -341,6 +358,8 @@ class ArmConsole(ArmLease):
                 self._sequence = None
                 message = exc.message if isinstance(exc, ConsoleError) else str(exc)
                 self._last_result = f"序列中止（{label}）：{message}"
+                if sequence.get("workflow"):
+                    sequence["workflow"].finish(False, self._last_result)
 
     def _sequence_arrived(self, sequence: dict) -> None:
         # Called with the lock held, only after success or an already-reached pose.
@@ -361,6 +380,8 @@ class ArmConsole(ArmLease):
                 except ConsoleError as exc:
                     self._sequence = None
                     self._last_result = f"序列中止：{exc.message}"
+                    if sequence.get("workflow"):
+                        sequence["workflow"].finish(False, self._last_result)
                     return
                 remaining = sequence["wait_until"] - self._clock()
                 if remaining <= 0:
@@ -376,35 +397,34 @@ class ArmConsole(ArmLease):
         with self._lock:
             self._stop_authority()
             cancelled = self._sequence is not None
+            if cancelled and self._sequence.get("workflow"):
+                self._sequence["workflow"].finish(False, "Operator stop or authority loss")
             self._sequence = None
             execution = self._execution
             if execution is None or execution.kind == "stop":
                 if cancelled and execution is None:
                     self._last_result = "序列已取消"
                 return {"stopping": execution is not None}
-            # Same timeline (stamp) as the move. The stop trajectory starts one sample
-            # in the past with the move's own points, so the controller continues inside
-            # it and never interpolates from its receive-time state. Braking starts at
-            # ``cut``, ``stop_lead`` ahead of now.
             period = self.config.sample_period
             now = execution.plan_time(self._clock())
-            cut = now + self.config.stop_lead
-            stop = plan_stop(execution.plan, cut, execution.gear.limits)
-            stopping = _Execution(
-                "stop", stop, execution.gear, execution.started, cut, execution.label
-            )
+            try:
+                stop, cut, points = stopping_points(
+                    execution.plan, now, self.config.stop_lead, period, execution.gear.limits
+                )
+                stopping = _Execution(
+                    "stop", stop, execution.gear, execution.started, cut, execution.label
+                )
+            except ValueError as error:
+                self._execution = None
+                self._authority_unknown = True
+                self._authority_outcome_at = self._clock()
+                self._last_result = "停止规划失败；取消/保持及受限停止未确认"
+                try:
+                    self._driver.cancel()
+                except Exception as cancel_error:
+                    raise ConsoleError("stop_cancel_unconfirmed", self._last_result) from cancel_error
+                raise ConsoleError("stop_unrepresentable", self._last_result) from error
             self._execution = stopping
-            count = max(int(math.ceil((cut - max(now - period, 0.0)) / period)), 1)
-            prefix = [execution.plan.state(cut - (count - i) * period) for i in range(count)]
-        points = [point for point in prefix if point.time >= 0.0] + [
-            TrajectoryPoint(
-                point.time + cut,
-                point.positions,
-                point.velocities,
-                point.accelerations,
-            )
-            for point in stop.points(period)
-        ]
         self._send(stopping, points)
         return {"stopping": True, "duration_s": stop.duration}
 
@@ -416,6 +436,7 @@ class ArmConsole(ArmLease):
                 self._execution = None
                 self._authority_outcome_at = self._clock()
                 if execution.kind == "stop":
+                    self._authority_unknown |= not success
                     self._last_result = "已停止" if success else f"停止失败：{message}"
                 else:
                     self._last_result = "已到达" if success else f"运动未完成：{message}"
@@ -426,6 +447,8 @@ class ArmConsole(ArmLease):
                         else:
                             self._sequence = None
                             self._last_result = f"序列中止（{execution.label}）：{message}"
+                            if sequence.get("workflow"):
+                                sequence["workflow"].finish(False, self._last_result)
             if not success and execution.kind == "stop":
                 self._driver.cancel()  # fall back to the controller's hold
 
@@ -435,9 +458,15 @@ class ArmConsole(ArmLease):
                     return
                 if execution.kind == "move":
                     self.authority.require(self._arm_permit)
+                trace_options = {}
+                if execution.kind == "stop":
+                    trace_options["takeover_deadline"] = execution.started + execution.time_offset
+                if execution.kind == "move" and self._sequence is not None and self._sequence.get("workflow"):
+                    trace_options["trace"] = self._sequence["workflow"].for_submission()
                 execution.started = self._driver.send(
                     self.joint_names, points, done, execution.started,
                     start_delay=self.config.start_delay if execution.kind == "move" else 0.0,
+                    **trace_options,
                 )
         except Exception as exc:  # noqa: BLE001 - report, never leave a phantom execution
             done(False, str(exc))

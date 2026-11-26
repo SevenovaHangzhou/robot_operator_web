@@ -90,6 +90,12 @@ class ArmPage:
         if self._view_prefix:
             app.router.add_get(self._view_prefix + "{path:.+}", self._view_mesh)
         app.router.add_get("/ws/arm", self._websocket)
+        import os
+        self.experiment_receiver = None
+        if os.environ.get("ROBOT_EXPERIMENT_RECEIVER_CONFIG"):
+            from remote_execution.receiver import configured
+            self.experiment_receiver = configured(self)
+            self.experiment_receiver.attach(app)
         app.on_shutdown.append(self._on_shutdown)
         app.cleanup_ctx.append(self._authority_worker)
 
@@ -220,7 +226,7 @@ class ArmPage:
                 if operation is not None and kind not in ("stop", "release"):
                     await ws.send_json({"type": "result", "id": body.get("id") if isinstance(body, dict) else None,
                                         "ok": False, "error": "busy", "message": "上一条运动请求尚未结束"})
-                elif kind in ("execute", "goto_pose", "run_sequence", "begin_motion"):
+                elif kind in ("execute", "goto_pose", "run_sequence", "run_experiment_package", "begin_motion"):
                     # One in-flight execution. Stop/release must reach the shared
                     # authority while its worker waits for the mode service.
                     operation = asyncio.create_task(self._handle(ws, connection, message.data, login, client))
@@ -294,7 +300,7 @@ class ArmPage:
                 }
             )
             return
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, OSError) as exc:
             self._audit.record(
                 audit_kind,
                 message,
@@ -342,6 +348,13 @@ class ArmPage:
             return console.stop()
         elif kind == "goto_pose":
             return console.goto_pose(connection, body["name"], body["gear"])
+        elif kind == "run_experiment_package":
+            receiver = getattr(self, "experiment_receiver", None)
+            if receiver is None:
+                raise ValueError("实验包接收未配置")
+            if set(body) != {"package_id", "request_id"}:
+                raise ValueError("只接受已接收包编号与幂等请求编号")
+            return receiver.start(connection, body["package_id"], body["request_id"])
         elif kind == "run_sequence":
             return console.run_sequence(
                 connection,
